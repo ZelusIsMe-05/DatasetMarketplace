@@ -1,0 +1,5 @@
+-r requirements.txt
+pytest>=8
+pytest-timeout>=2.3
+edge-tts>=6.1     # chỉ dùng để sinh audio fixture tiếng Việt cho test tích hợp QC
+sounddevice>=0.4  # tùy chọn: CLI ghi âm trực tiếp từ micro

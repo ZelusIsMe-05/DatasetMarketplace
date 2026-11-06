@@ -1,0 +1,10 @@
+{
+  "name": "Giọng miền Trung – hội thoại ngân hàng",
+  "description": "Thu thập 10 giờ giọng đọc miền Trung cho chatbot tổng đài ngân hàng. Mỗi bản ghi là một câu mẫu về nghiệp vụ ngân hàng, đọc tự nhiên bằng giọng địa phương.",
+  "purpose": "Huấn luyện và đánh giá mô hình nhận dạng tiếng nói (ASR) cho tổng đài ngân hàng hiểu giọng miền Trung.",
+  "license": "research-and-commercial",
+  "language": "vi",
+  "accent": "mien-trung",
+  "metadata_uri": "seed:demo-campaign",
+  "creator_note": "Chiến dịch mẫu do SeedDemo.s.sol tạo (chỉ local/Fuji)."
+}

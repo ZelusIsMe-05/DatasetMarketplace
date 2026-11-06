@@ -1,0 +1,66 @@
+[
+  {
+    "file": "prompt00_hoaimy.wav",
+    "prompt_index": 0,
+    "text": "tôi muốn mở một tài khoản tiết kiệm có kỳ hạn sáu tháng",
+    "voice": "vi-VN-HoaiMyNeural",
+    "kind": "correct"
+  },
+  {
+    "file": "prompt01_namminh.wav",
+    "prompt_index": 1,
+    "text": "cho tôi hỏi lãi suất gửi tiết kiệm hiện nay là bao nhiêu",
+    "voice": "vi-VN-NamMinhNeural",
+    "kind": "correct"
+  },
+  {
+    "file": "prompt02_hoaimy.wav",
+    "prompt_index": 2,
+    "text": "tôi cần chuyển hai triệu đồng sang tài khoản của mẹ tôi",
+    "voice": "vi-VN-HoaiMyNeural",
+    "kind": "correct"
+  },
+  {
+    "file": "prompt03_namminh.wav",
+    "prompt_index": 3,
+    "text": "làm ơn khóa thẻ ghi nợ của tôi vì tôi vừa bị mất ví",
+    "voice": "vi-VN-NamMinhNeural",
+    "kind": "correct"
+  },
+  {
+    "file": "prompt04_hoaimy.wav",
+    "prompt_index": 4,
+    "text": "số dư tài khoản thanh toán của tôi còn lại bao nhiêu tiền",
+    "voice": "vi-VN-HoaiMyNeural",
+    "kind": "correct"
+  },
+  {
+    "file": "prompt05_namminh.wav",
+    "prompt_index": 5,
+    "text": "tôi muốn vay mua nhà trong thời hạn mười lăm năm",
+    "voice": "vi-VN-NamMinhNeural",
+    "kind": "correct"
+  },
+  {
+    "file": "prompt06_hoaimy.wav",
+    "prompt_index": 6,
+    "text": "phí duy trì tài khoản hằng tháng của ngân hàng là bao nhiêu",
+    "voice": "vi-VN-HoaiMyNeural",
+    "kind": "correct"
+  },
+  {
+    "file": "prompt07_namminh.wav",
+    "prompt_index": 7,
+    "text": "tôi chưa nhận được mã xác thực gửi qua tin nhắn điện thoại",
+    "voice": "vi-VN-NamMinhNeural",
+    "kind": "correct"
+  },
+  {
+    "file": "silence_4s.wav",
+    "kind": "silence"
+  },
+  {
+    "file": "too_short_1s.wav",
+    "kind": "too_short"
+  }
+]

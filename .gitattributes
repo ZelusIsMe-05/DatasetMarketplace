@@ -1,0 +1,5 @@
+* text=auto
+*.sh text eol=lf
+*.bat text eol=crlf
+# Các file được băm on-chain: giữ nguyên byte (LF) trên mọi máy
+seed/** -text

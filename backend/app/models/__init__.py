@@ -1,0 +1,40 @@
+"""ORM models. Import tất cả để Alembic thấy metadata."""
+from app.models.base import Base
+from app.models.entities import (
+    AuthChallenge,
+    Campaign,
+    CampaignDraft,
+    Claim,
+    Consent,
+    Contribution,
+    ContributionStatus,
+    KvState,
+    OnchainContribution,
+    Prompt,
+    PromptToken,
+    Purchase,
+    RelayTx,
+    Snapshot,
+    UsedSignature,
+    User,
+)
+
+__all__ = [
+    "AuthChallenge",
+    "Base",
+    "Campaign",
+    "CampaignDraft",
+    "Claim",
+    "Consent",
+    "Contribution",
+    "ContributionStatus",
+    "KvState",
+    "OnchainContribution",
+    "Prompt",
+    "PromptToken",
+    "Purchase",
+    "RelayTx",
+    "Snapshot",
+    "UsedSignature",
+    "User",
+]

@@ -1,0 +1,8 @@
+{
+  "name": "giongque-contracts",
+  "private": true,
+  "description": "Solidity dependencies for Foundry (OpenZeppelin v5)",
+  "dependencies": {
+    "@openzeppelin/contracts": "5.1.0"
+  }
+}
