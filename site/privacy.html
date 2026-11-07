@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chính sách quyền riêng tư — Dataset Marketplace</title>
+  <meta name="description" content="Dataset Marketplace thu thập, sử dụng, lưu trữ, chia sẻ và xóa dữ liệu của bạn như thế nào.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <a class="logo" href="./">Dataset <span>Marketplace</span></a>
+      <nav><a href="./">Trang chủ</a><a href="https://github.com/ZelusIsMe-05/DatasetMarketplace/issues">Liên hệ</a></nav>
+    </div>
+  </header>
+  <main class="wrap">
+    <h1>Chính sách quyền riêng tư</h1>
+    <p class="meta">Cập nhật lần cuối: 07/11/2026</p>
+    <p>Dataset Marketplace là chợ dữ liệu giọng nói tiếng Việt do đội Team1 Vietnam UniHack 2026 phát triển. Trang này giải
+      thích chúng tôi thu thập dữ liệu gì, dùng vào việc gì, lưu ở đâu, chia sẻ với ai và bạn xóa dữ liệu như thế nào.</p>
+    <p class="note">Ứng dụng đang ở giai đoạn thử nghiệm, chạy trên mạng blockchain thử nghiệm và không dùng tiền thật. Toàn bộ
+      dữ liệu thử nghiệm có thể bị xóa khi hệ thống được cài đặt lại.</p>
+
+    <h2>1. Dữ liệu từ tài khoản Google</h2>
+    <p>Khi bạn bấm “Tiếp tục bằng Google”, Google gửi cho chúng tôi một mã xác thực (ID token) chứa thông tin cơ bản của tài
+      khoản. Chúng tôi chỉ yêu cầu quyền <code>openid</code>, <code>email</code> và <code>profile</code>, và chỉ
+      <b>lưu</b>:</p>
+    <ul>
+      <li><b>Địa chỉ email</b> đã được Google xác minh — để đăng nhập và đảm bảo mỗi email chỉ gắn với một ví.</li>
+      <li><b>Mã định danh tài khoản Google</b> (trường <code>sub</code>) — để nhận ra đúng tài khoản ở lần đăng nhập sau.</li>
+    </ul>
+    <p>Chúng tôi <b>không</b> lưu tên hay ảnh đại diện, <b>không</b> nhận mật khẩu Google, và <b>không</b> truy cập Gmail,
+      Google Drive, danh bạ hay bất kỳ dữ liệu Google nào khác. Dữ liệu tài khoản Google không được bán, không dùng cho quảng
+      cáo và không chuyển cho bên thứ ba ngoài các nhà cung cấp hạ tầng nêu ở mục 5.</p>
+
+    <h2>2. Dữ liệu khác chúng tôi xử lý</h2>
+    <table>
+      <thead><tr><th>Dữ liệu</th><th>Khi nào</th><th>Lưu ở đâu</th></tr></thead>
+      <tbody>
+        <tr><td>Địa chỉ ví (công khai)</td><td>Khi đăng nhập và giao dịch</td><td>Máy chủ và blockchain</td></tr>
+        <tr><td>Khóa riêng của ví tạo trên trình duyệt</td><td>Khi bạn tạo ví</td><td><b>Chỉ trên thiết bị của bạn</b>, được mã
+          hóa bằng mật khẩu bạn đặt. Máy chủ không bao giờ nhận khóa riêng hay mật khẩu ví.</td></tr>
+        <tr><td>Bản ghi giọng nói và câu đã đọc</td><td>Chỉ sau khi bạn ký đồng thuận cho chiến dịch</td><td>Kho lưu trữ riêng
+          tư trên máy chủ. Bản ghi không đạt kiểm tra chất lượng bị xóa ngay, không được giữ lại.</td></tr>
+        <tr><td>Chữ ký đồng thuận / thu hồi, số giây hợp lệ, khoản thu nhập</td><td>Khi bạn đồng thuận, ghi âm, rút tiền, thu
+          hồi</td><td>Máy chủ và blockchain</td></tr>
+        <tr><td>Địa chỉ IP</td><td>Mỗi yêu cầu</td><td>Chỉ dùng tạm trong bộ nhớ để giới hạn tần suất chống lạm dụng, không ghi
+          vào cơ sở dữ liệu</td></tr>
+      </tbody>
+    </table>
+    <p>Kiểm tra chất lượng giọng nói chạy bằng mô hình nhận dạng ngay trên máy chủ của chúng tôi; bản ghi không được gửi cho
+      dịch vụ AI bên ngoài.</p>
+
+    <h2>3. Mục đích sử dụng</h2>
+    <ul>
+      <li>Đăng nhập và chống một người tạo nhiều tài khoản.</li>
+      <li>Kiểm tra chất lượng bản ghi và tính số giây hợp lệ.</li>
+      <li>Đóng gói bản ghi đạt chuẩn thành bộ dữ liệu bán cho người mua theo đúng mục đích và giấy phép ghi trong điều khoản của
+        chiến dịch mà bạn đã đồng thuận.</li>
+      <li>Chia doanh thu và cho bạn rút tiền.</li>
+    </ul>
+
+    <h2>4. Những gì nằm trên blockchain</h2>
+    <p>Blockchain là sổ cái công khai và <b>không thể xóa</b>. Vì vậy chúng tôi chỉ ghi lên đó: địa chỉ ví, trạng thái đồng
+      thuận / thu hồi kèm thời điểm, số giây hợp lệ, các khoản tiền, và một mã băm có salt của từng bản ghi
+      (<code>keccak256(audio ‖ salt)</code>). <b>Không có giọng nói, câu đọc hay email nào trên blockchain.</b> Không có salt
+      thì không thể suy ra giọng nói từ mã băm.</p>
+
+    <h2>5. Chia sẻ dữ liệu</h2>
+    <ul>
+      <li><b>Người mua bộ dữ liệu</b> nhận các bản ghi giọng nói đạt chuẩn của chiến dịch (tệp âm thanh, câu đã đọc, thời lượng,
+        mã bản ghi). Gói dữ liệu <b>không kèm email</b> của bạn. Lưu ý: mã bản ghi có thể được đối chiếu với blockchain công
+        khai để thấy địa chỉ ví đã đóng góp (địa chỉ ví là một bút danh, không chứa tên hay email).</li>
+      <li><b>Nhà cung cấp hạ tầng</b> xử lý dữ liệu thay mặt chúng tôi: Google (đăng nhập), Neon (cơ sở dữ liệu PostgreSQL,
+        máy chủ ở Singapore), mạng Avalanche (blockchain).</li>
+      <li>Chúng tôi không bán dữ liệu cá nhân và không chia sẻ cho mục đích quảng cáo.</li>
+    </ul>
+
+    <h2>6. Thu hồi đồng thuận và xóa dữ liệu</h2>
+    <ul>
+      <li>Bạn có thể <b>thu hồi đồng thuận</b> cho từng bản ghi bất cứ lúc nào trong ứng dụng. Khi đó máy chủ <b>xóa thật</b>
+        tệp âm thanh và salt; mã băm trên blockchain không còn liên kết được với giọng nói nào.</li>
+      <li>Bản ghi đã thu hồi bị loại khỏi mọi phiên bản dữ liệu phát hành sau đó. Người mua không được dùng nó cho lần huấn luyện
+        mới sau thời điểm thu hồi. Thu hồi không có hiệu lực ngược với bản đã tải hoặc mô hình đã huấn luyện trước đó.</li>
+      <li>Tiền bạn đã kiếm trước khi thu hồi vẫn được giữ và rút được.</li>
+      <li>Để xóa tài khoản (email và liên kết ví) hoặc hỏi về dữ liệu của bạn, hãy liên hệ theo mục 8. Dữ liệu đã ghi trên
+        blockchain không thể xóa vì đặc tính của blockchain.</li>
+    </ul>
+
+    <h2>7. Lưu giữ và bảo mật</h2>
+    <p>Email và liên kết ví được giữ khi tài khoản còn hoạt động. Bản ghi giọng nói được giữ cho tới khi bạn thu hồi đồng thuận.
+      Kết nối tới cơ sở dữ liệu được mã hóa (TLS); tệp âm thanh không được công khai và chỉ được trao cho người mua đã có giấy
+      phép hợp lệ trên blockchain.</p>
+    <p>Bạn có các quyền theo quy định bảo vệ dữ liệu cá nhân của Việt Nam (Nghị định 13/2023/NĐ-CP và Luật Bảo vệ dữ liệu cá
+      nhân), gồm quyền được biết, truy cập, chỉnh sửa, xóa dữ liệu và rút lại đồng thuận.</p>
+
+    <h2>8. Liên hệ</h2>
+    <p>Gửi câu hỏi hoặc yêu cầu về dữ liệu qua
+      <a href="https://github.com/ZelusIsMe-05/DatasetMarketplace/issues">GitHub Issues của dự án</a>. Đừng đăng thông tin
+      cá nhân nhạy cảm trong issue công khai — chúng tôi sẽ phản hồi và hướng dẫn cách xác minh riêng.</p>
+
+    <h2>9. Thay đổi chính sách</h2>
+    <p>Khi chính sách thay đổi, chúng tôi cập nhật ngày ở đầu trang này. Thay đổi về cách dùng dữ liệu giọng nói chỉ áp dụng cho
+      chiến dịch bạn đồng thuận sau thời điểm thay đổi.</p>
+  </main>
+  <footer>
+    <div class="wrap">Dataset Marketplace · Team1 Vietnam UniHack 2026 · <a href="./">Trang chủ</a></div>
+  </footer>
+</body>
+</html>

@@ -41,7 +41,7 @@ mỗi lần dataset được bán, contract **tự chia lại tiền** cho nhữ
 |---|---|
 | Smart contract | Solidity 0.8.28, OpenZeppelin 5.1.0, Foundry 1.9.0 (bản Windows chính thức) |
 | Chain | Anvil (31337) · Avalanche Fuji C-Chain (43113) · C-Chain mainnet (43114) |
-| Backend | Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2 + Alembic, SQLite, web3.py 7, slowapi, PyJWT, google-auth |
+| Backend | Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2 + Alembic, SQLite (mặc định) hoặc PostgreSQL/Neon (`DATABASE_URL`, driver psycopg 3), web3.py 7, slowapi, PyJWT, google-auth |
 | QC | PyTorch 2.6 CPU, torchaudio 2.6 (`forced_align`), transformers 4.57, `nguyenvulebinh/wav2vec2-base-vietnamese-250h`, Silero VAD 5.1, jiwer, soundfile, PyAV |
 | CLI | Typer + Rich + httpx + eth-account |
 | Frontend (khung) | Next.js 16, React 19, TypeScript, Tailwind 4, viem 2, wagmi 3, TanStack Query |
@@ -49,7 +49,7 @@ mỗi lần dataset được bán, contract **tự chia lại tiền** cho nhữ
 ## 4. Kiến trúc tổng thể
 
 ```
-CLI / Frontend ──HTTP──▶ FastAPI (app/api) ──▶ services ──▶ repositories ──▶ SQLite
+CLI / Frontend ──HTTP──▶ FastAPI (app/api) ──▶ services ──▶ repositories ──▶ SQLite / PostgreSQL (Neon)
                                                ├─▶ qc (VAD + wav2vec2 + forced alignment + CER)
                                                ├─▶ storage (audio riêng tư, xóa khi thu hồi)
                                                ├─▶ blockchain.relayer ──tx──▶ VoiceCampaigns.sol ──▶ (Mock)USDC
@@ -165,8 +165,9 @@ scripts\start-backend.bat local reload :: chế độ tự nạp lại khi sửa
 ```
 
 - Swagger: **http://127.0.0.1:8000/docs** · OpenAPI: `/openapi.json` · Health: `/health`
-- Backend tự nạp `backend\.env.<NETWORK>`; dữ liệu nằm ở `storage\<network>-<fingerprint>\` (DB SQLite + audio).
-  Khởi động lại Anvil + deploy lại ⇒ backend tự dùng thư mục dữ liệu mới.
+- Backend tự nạp `backend\.env.<NETWORK>`. Audio luôn nằm ở `storage\<network>-<fingerprint>\audio\` (đĩa của máy backend).
+  Database: SQLite trong cùng thư mục đó (mặc định), hoặc PostgreSQL/Neon nếu đặt `DATABASE_URL` (xem mục dưới).
+  `GET /health` cho biết đang dùng `"database": "sqlite"` hay `"postgresql"`.
 - Thử nhanh bằng curl:
 
 ```cmd
@@ -175,6 +176,29 @@ curl http://127.0.0.1:8000/fx
 curl http://127.0.0.1:8000/campaigns
 curl http://127.0.0.1:8000/campaigns/0/terms
 ```
+
+### Database trên Neon (PostgreSQL) và reset dữ liệu
+
+1. Lấy chuỗi kết nối Neon theo [`docs/environment-variables.md` §1b](docs/environment-variables.md) (nên dùng nhánh `dev`
+   cho local, nhánh `production` cho Fuji; **tắt Connection pooling**).
+2. Thêm vào `backend\.env.local`: `DATABASE_URL=postgresql://...?sslmode=require` (dán nguyên chuỗi của Neon — backend tự
+   chuyển sang driver psycopg). Tùy chọn `DATABASE_SCHEMA=<tên>` để dùng schema riêng thay vì `public`.
+3. Khởi động backend: Alembic tự tạo bảng, nạp chiến dịch mẫu từ `seed\`, đọc lại sự kiện từ chain.
+
+**Chốt an toàn:** database được đóng dấu deployment (chain id + contract + hash block deploy). Khi Anvil khởi động lại
+(chain mới) mà database vẫn chứa dữ liệu cũ, backend **từ chối khởi động** và hướng dẫn reset — tránh trộn dữ liệu hai chain.
+
+**Reset dữ liệu off-chain** (database + audio luôn xóa cùng nhau; không xóa tay trong Neon):
+
+```cmd
+scripts\reset-local.bat     :: local: xóa database (SQLite hoặc Neon) + audio + trạng thái Anvil đã lưu, rồi hướng dẫn chạy lại
+scripts\reset-db.bat        :: chỉ database + audio của NETWORK hiện tại (hỏi gõ RESET; thêm --yes để không hỏi)
+```
+
+Reset **không xóa được blockchain**. Muốn "chỉ còn dữ liệu mẫu" ở local thì làm đủ: tắt backend + Anvil →
+`scripts\reset-local.bat` → `scripts\start-anvil.bat` → `scripts\deploy-local.bat` → `scripts\start-backend.bat`.
+Mainnet: script luôn từ chối. Fuji: cần thêm `--allow-fuji` — **không reset khi contract trên Fuji còn đang dùng**
+(chain không xóa được, dữ liệu off-chain sẽ mất vĩnh viễn); đổi contract thì dùng nhánh Neon / `DATABASE_SCHEMA` mới.
 
 ## 10. CLI `giongque`
 
@@ -239,8 +263,9 @@ scripts\test-all.bat
 | Bộ test | Lệnh riêng | Nội dung |
 |---|---|---|
 | Foundry (37) | `cd contracts && forge test -vv` | 7 test gốc của đề xuất + giá, thời hạn, quỹ mồi, chống phát lại, quyền, fuzz khả năng thanh toán |
-| Unit + QC thật (43) | `cd backend && .venv\Scripts\python -m pytest tests/unit` | money, token, chuẩn hóa, CER, các bước QC, Merkle, EIP-712, cấu hình mạng; model wav2vec2 + VAD thật trên audio thật, webm/opus |
+| Unit + QC thật (54) | `cd backend && .venv\Scripts\python -m pytest tests/unit` | money, token, chuẩn hóa, CER, các bước QC, Merkle, EIP-712, cấu hình mạng; model wav2vec2 + VAD thật trên audio thật, webm/opus |
 | Tích hợp (11) | `.venv\Scripts\python -m pytest tests/integration` | **tự khởi chạy Anvil** ở cổng ngẫu nhiên, deploy contract thật, API thật, QC thật: toàn bộ luồng, thu hồi xóa file trên đĩa, vùng xám, rate limit, chốt chặn mainnet (forge script trên chain id 43114) |
+| PostgreSQL/Neon (5) | `set TEST_DATABASE_URL=<chuỗi Neon>` rồi `.venv\Scripts\python -m pytest tests/integration/test_postgres.py` | Toàn bộ luồng nghiệp vụ trên PostgreSQL thật trong một **schema tạm** (tự xóa sau test, không đụng dữ liệu dev); chốt chặn deployment; script reset xóa database + audio; khởi động lại chỉ còn seed. Bỏ qua nếu không đặt biến |
 
 Lọc theo marker: `-m "not qc"` (bỏ test cần model), `-m integration`.
 
@@ -355,7 +380,8 @@ Nhấn `Ctrl+C` trong cửa sổ frontend, tiếp theo backend, cuối cùng Anv
 Để giữ trạng thái blockchain, khởi chạy Anvil bằng `scripts\start-anvil.bat persist` và dừng bình thường bằng `Ctrl+C`.
 Lần sau, nếu Anvil đã nạp lại trạng thái cũ và `contracts\deployments\31337.json` vẫn khớp contract trên chain thì
 chỉ cần khởi động lại backend + frontend. Với Anvil không lưu trạng thái, cần deploy lại sau mỗi lần khởi động chain mới.
-Database/audio vẫn nằm trong `storage\`; `scripts\reset-local.bat` là lệnh xóa dữ liệu local, không phải lệnh dừng dịch vụ.
+Audio vẫn nằm trong `storage\`; database nằm trong `storage\` (SQLite) hoặc trên Neon. `scripts\reset-local.bat` là lệnh
+**xóa** dữ liệu local (database + audio), không phải lệnh dừng dịch vụ.
 
 ### Biến môi trường (`frontend/.env.local`, mẫu ở `frontend/.env.example`)
 
@@ -444,14 +470,19 @@ Thử bằng tay: mở `http://localhost:3000/earn`, tạo ví, "Đăng nhập t
 | `/earn` hỏi lại mật khẩu sau khi tải lại trang | Đúng thiết kế: khóa ví chỉ được giải mã trong bộ nhớ |
 | Nút "Tạo ví của tôi" không bấm được | Mật khẩu chưa đủ 5 điều kiện (xem danh sách dưới ô mật khẩu) hoặc hai lần nhập chưa khớp |
 | Quên mật khẩu ví | Không khôi phục được (khóa chỉ mã hóa trên máy bạn). Rút hết tiền trước khi xóa dữ liệu trình duyệt |
+| Backend báo "Database đang chứa dữ liệu của một deployment khác" | Đúng thiết kế: Anvil đã khởi động lại (chain mới) nhưng database (thường là Neon) còn dữ liệu chain cũ. Local: tắt backend → `scripts\reset-db.bat` → chạy lại backend. Fuji: không reset — dùng nhánh Neon / `DATABASE_SCHEMA` khác |
+| Backend báo "Không kết nối/migrate được database" | Kiểm tra `DATABASE_URL` (đúng chuỗi Neon, có `sslmode=require`) và mạng; nhánh Neon có thể đang ngủ — thử lại sau vài giây |
 | Bản ghi bị loại "chưa nghe rõ giọng" dù đã đọc | Bấm **Dừng** ngay khi đọc xong — khoảng lặng dài làm tỷ lệ giọng nói < 50% (quy tắc QC §10.1) |
 | `npm run dev` báo `EADDRINUSE :::3000`, hoặc trang lỗi 500 "Jest worker encountered … child process exceptions" | Còn một tiến trình `next dev` cũ treo ở cổng 3000. Đóng cửa sổ CMD cũ, hoặc `netstat -ano \| findstr :3000` rồi `taskkill /PID <pid> /F`, sau đó chạy lại `scripts\start-frontend.bat` |
 | Trình duyệt chặn micro | Bấm biểu tượng ổ khóa trên thanh địa chỉ → cho phép Micro; trang phải chạy trên `localhost` hoặc HTTPS |
+| Google báo *"Access blocked … has not completed the Google verification process"* / `access_denied` | Ứng dụng OAuth còn ở **Testing** (chỉ Test users vào được). Google Auth Platform → Audience → **Publish app** → In production ([`docs/environment-variables.md`](docs/environment-variables.md) mục F, bước 7) |
+| Nút Google báo *"The given origin is not allowed for the given client ID"* | Đang mở `http://127.0.0.1:3000` (Google không nhận địa chỉ IP) hoặc origin chưa có trong *Authorized JavaScript origins*. Mở `http://localhost:3000` |
 
 ## 17. Giới hạn hiện tại và công việc còn lại
 
 - **Chưa deploy Fuji / verify Snowtrace** — cần AVAX từ Core faucet và sự cho phép; đã có script và `.env.fuji.example`.
-- **`POST /auth/google` chưa thử với Google thật** (cần `GOOGLE_CLIENT_ID`); luồng dev login dùng chung logic gắn ví.
+- **`POST /auth/google` chưa thử với ID token Google thật** (cần người đăng nhập bằng tài khoản Google); luồng dev login
+  dùng chung logic gắn ví.
 - **Ngưỡng QC** đang theo đề xuất; chưa hiệu chỉnh bằng 50 bản đúng / 50 bản sai của người thật (§10.4). Fixture
   test là giọng đọc neural (edge-tts) tiếng Việt — audio thật nhưng không phải người thật, không có giọng vùng miền.
 - **Chống TTS (anti-spoofing)** nằm trong lộ trình (§7.8); MVP chống bằng quy trình (token 60 giây, kiểm thời lượng).
@@ -461,7 +492,9 @@ Thử bằng tay: mở `http://localhost:3000/earn`, tạo ví, "Đăng nhập t
 - **Frontend:** đã hoàn thiện mọi màn hình theo đề xuất và kiểm thử trên Chromium (e2e + axe). Chưa thử trên Safari/Firefox
   thật và trên điện thoại thật (đã kiểm responsive 375–1440px bằng trình duyệt giả lập); chưa thử với micro thật của
   người dùng (e2e dùng micro giả phát bản ghi thật); chưa thử Core/MetaMask thật (e2e dùng ví EIP-1193 nối Anvil).
-- **Đăng nhập Google trên web** cần `NEXT_PUBLIC_GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_ID` thật; chưa thử.
+- **Đăng nhập Google trên web**: Client ID thật đã cấu hình; đã kiểm tra tự động rằng Google nhận origin
+  `http://localhost:3000` (nút tải HTTP 200) và từ chối `127.0.0.1`. Chưa có ai đăng nhập hết luồng bằng tài khoản Google
+  thật (cần người bấm). Ứng dụng OAuth phải được *Publish* (In production) thì mọi Gmail mới vào được.
 - Khi gom nhiều thao tác: chưa có trang "Lịch sử rút tiền" riêng (backend chưa có endpoint liệt kê `Claimed` theo ví);
   thu nhập hiển thị tiền chưa rút + số dư on-chain của ví.
 - `setup.bat` chưa được chạy lại trên một máy Windows trắng; các script khác đã chạy thật trong CMD.

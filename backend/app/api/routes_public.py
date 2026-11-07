@@ -25,6 +25,7 @@ class HealthResponse(BaseModel):
     relayer: str
     relayer_balance_avax: float | None
     db_ok: bool
+    database: str  # "postgresql" (vd. Neon) hoặc "sqlite"
     qc_model_loaded: bool
     qc_load_error: str | None
     dev_mode: bool
@@ -64,6 +65,7 @@ def health(c: ContainerDep) -> HealthResponse:
         relayer=c.relayer.address,
         relayer_balance_avax=bal,
         db_ok=db_ok,
+        database=c.engine.dialect.name,
         qc_model_loaded=c.qc.loaded,
         qc_load_error=c.qc.load_error,
         dev_mode=c.settings.dev_mode,

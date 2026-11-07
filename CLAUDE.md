@@ -16,6 +16,8 @@
 - `frontend/` Next.js 16 (Cache Components) — đọc `frontend/AGENTS.md` + `docs/frontend-design-system.md` trước khi sửa.
   `features/<vai-trò>` cho màn hình, `components/ui` cho design system; token màu/chữ/chuyển động chỉ đặt trong `app/globals.css`.
 - `seed/demo-campaign/` câu mẫu + điều khoản thật mà SeedDemo băm lên chain (giữ LF, không sửa byte tùy tiện).
+- `site/` trang chủ + chính sách quyền riêng tư tĩnh cho màn hình đồng ý OAuth của Google, đăng qua nhánh `gh-pages`
+  (GitHub Pages). Sửa cách xử lý dữ liệu cá nhân ⇒ cập nhật `site/privacy.html` cho khớp.
 - `scripts/*.bat` chạy trên Windows CMD.
 - Biến môi trường: mọi biến mới phải được thêm vào file `*.example` tương ứng **và** `docs/environment-variables.md`.
 
@@ -38,6 +40,10 @@ cd frontend && npm run test:a11y             :: axe WCAG 2.2 AA
 ```
 Frontend: route động đọc `params` qua `use()` bên trong `<Suspense>`; hook URL (`usePathname`) phải nằm trong `<Suspense>`;
 `<dialog>` modal phải đóng trong effect cleanup (Next 16 giữ trang cũ trong `<Activity hidden>`).
+Database: SQLite mặc định, PostgreSQL/Neon khi có `DATABASE_URL` (đã có trong `backend/.env.local`, KHÔNG in/commit).
+Test PostgreSQL thật (schema tạm, tự xóa): `TEST_DATABASE_URL=<chuỗi> pytest tests/integration/test_postgres.py`.
+Reset dữ liệu off-chain CHỈ qua `scripts\reset-db.bat` / `reset-local.bat` (xóa database + audio cùng lúc); không xóa bảng
+bằng tay. Database được đóng dấu deployment: chain mới mà database cũ ⇒ backend từ chối khởi động (đúng thiết kế).
 Python trong bash/Git Bash: dùng `-X utf8` (console Windows mặc định cp1252).
 
 ## Skills dự án (`.claude/skills/`, chi tiết ở `docs/skills.md`)

@@ -16,7 +16,7 @@ flowchart TB
         QC["app/qc<br/>Silero VAD + wav2vec2 CTC<br/>+ forced_align + CER"]
         REL["app/blockchain/relayer<br/>(ví nóng, nonce lock, gas, receipt)"]
         IDX["app/blockchain/indexer<br/>(sự kiện → DB, hook thu hồi)"]
-        DB[("SQLite + Alembic<br/>storage/&lt;network&gt;-&lt;fingerprint&gt;/")]
+        DB[("SQLite hoặc PostgreSQL/Neon<br/>+ Alembic")]
         ST[("Kho audio riêng tư<br/>WAV 16 kHz")]
     end
     subgraph Chain["Avalanche C-Chain (Anvil / Fuji / mainnet)"]
@@ -74,9 +74,16 @@ sequenceDiagram
 `stale` (link tải cũ trả 410), tự công bố phiên bản mới (Merkle root mới on-chain).
 
 ## Dữ liệu theo deployment
-Thư mục dữ liệu = `storage/<network>-<fingerprint>`, fingerprint = sha256(chainId, địa chỉ contract, hash block
-deploy). Khởi động lại Anvil (chain mới, có thể trùng địa chỉ contract) ⇒ DB mới, không lẫn dữ liệu cũ.
+Mỗi deployment có dấu vân tay = sha256(chainId, địa chỉ contract, hash block deploy).
 
+- **Audio**: luôn ở `storage/<network>-<fingerprint>/audio/` trên máy backend (chưa dùng lưu trữ đám mây).
+- **SQLite** (mặc định): file `giongque.db` trong cùng thư mục ⇒ Anvil khởi động lại tự sang thư mục/database mới.
+- **PostgreSQL/Neon** (`DATABASE_URL`, tùy chọn `DATABASE_SCHEMA`): một database dùng chung, được **đóng dấu** dấu vân tay
+  (bảng `kv_state`, khóa `deployment.fingerprint`). Dấu không khớp chain hiện tại ⇒ backend từ chối khởi động thay vì trộn
+  dữ liệu hai chain (trùng campaignId, sai block của indexer, metadata không liên kết được).
+- **Reset**: `scripts\reset-db.bat` / `reset-local.bat` (`backend/scripts/reset_db.py`) xóa bảng database **và** thư mục audio
+  cùng lúc; mainnet luôn từ chối, Fuji cần `--allow-fuji`. Blockchain không bị đụng tới: lần khởi động sau, backend tạo lại
+  bảng, nạp seed và đọc lại sự kiện từ chain.
 ## Bảo mật
 | Mối đe dọa | Biện pháp |
 |---|---|

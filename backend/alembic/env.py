@@ -20,13 +20,27 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _run(connection) -> None:  # noqa: ANN001
+    # render_as_batch chỉ cần cho SQLite (ALTER TABLE hạn chế); PostgreSQL dùng ALTER bình thường
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        render_as_batch=connection.dialect.name == "sqlite",
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
 def run_migrations_online() -> None:
+    # Ứng dụng truyền sẵn kết nối (app/models/session.py: run_migrations) để migration chạy đúng schema
+    provided = config.attributes.get("connection")
+    if provided is not None:
+        _run(provided)
+        return
     connectable = engine_from_config(config.get_section(config.config_ini_section, {}), prefix="sqlalchemy.",
                                      poolclass=pool.NullPool)
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, render_as_batch=True)
-        with context.begin_transaction():
-            context.run_migrations()
+        _run(connection)
 
 
 if context.is_offline_mode():

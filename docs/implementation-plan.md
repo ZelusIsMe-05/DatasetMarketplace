@@ -17,7 +17,7 @@ Tài liệu này ghi lại phân tích, thiết kế module, thứ tự phụ th
 
 ### Dữ liệu nằm ở đâu
 
-| Dữ liệu | Blockchain | Database (SQLite) | Kho riêng tư (đĩa) |
+| Dữ liệu | Blockchain | Database (SQLite hoặc PostgreSQL/Neon) | Kho riêng tư (đĩa) |
 |---|---|---|---|
 | Tiền, giá, tỷ lệ chia, hạn, mục tiêu | ✓ | cache chỉ mục sự kiện | |
 | `promptSetHash`, `termsHash`, `metadataURI` | ✓ | văn bản gốc | |
@@ -32,7 +32,7 @@ Tài liệu này ghi lại phân tích, thiết kế module, thứ tự phụ th
 ### Luồng gọi
 
 ```
-CLI / Frontend ──HTTP──▶ FastAPI ──▶ services ──▶ repositories ──▶ SQLite
+CLI / Frontend ──HTTP──▶ FastAPI ──▶ services ──▶ repositories ──▶ SQLite / PostgreSQL (Neon)
                                    │            └▶ storage (audio riêng tư)
                                    ├▶ qc (Silero VAD + wav2vec2 CTC + forced_align + CER)
                                    ├▶ blockchain.client (đọc contract)
@@ -77,7 +77,7 @@ Người tạo / người mua ──ví của họ──▶ VoiceCampaigns (crea
 | 13 | §6.8 thu hồi | Người dùng có thể tự gọi `revoke` on-chain (không qua `/revoke`) → server không biết để xóa audio. | Indexer nghe `ConsentRevoked` và xóa audio + salt cho mọi bản ghi bị thu hồi, dù gửi qua đường nào. |
 | 14 | §6.6 tải dataset | "File luôn loại bỏ bản ghi đã thu hồi" nhưng snapshot cũ vẫn chứa bản ghi đó. | Khi thu hồi: snapshot chứa bản ghi bị đánh dấu `stale`, backend tự công bố phiên bản mới (`AUTO_SNAPSHOT_ON_REVOKE`). Tải về chỉ phục vụ phiên bản không stale; zip được dựng khi tải nên không tồn tại bản sao audio đã thu hồi. |
 | 15 | §10.5 | `get_transaction_count(address)` không tính giao dịch pending → nonce trùng khi gửi liên tiếp. | Relayer giữ khóa + nonce cục bộ, đồng bộ với `pending`. |
-| 16 | §12.5 `config.py` | Một DB dùng chung cho mọi lần redeploy Anvil → dữ liệu cũ lẫn chain mới. | Thư mục dữ liệu theo dấu vân tay deployment (`chainId + địa chỉ contract + hash block deploy`). Đã kiểm: redeploy cho cùng địa chỉ contract vẫn ra thư mục mới. |
+| 16 | §12.5 `config.py` | Một DB dùng chung cho mọi lần redeploy Anvil → dữ liệu cũ lẫn chain mới. | Thư mục dữ liệu theo dấu vân tay deployment (`chainId + địa chỉ contract + hash block deploy`). Đã kiểm: redeploy cho cùng địa chỉ contract vẫn ra thư mục mới. Với PostgreSQL/Neon dùng chung: database được đóng dấu deployment, lệch thì backend từ chối khởi động; reset bằng `scripts\reset-db.bat` (xóa database + audio cùng lúc, không đụng chain). |
 | 17 | §10.3 ghim `torch==2.5.1` | **Không tương thích:** transformers ≥ 4.50 từ chối `torch.load` trên torch < 2.6 (CVE-2025-32434), mà model `nguyenvulebinh/wav2vec2-base-vietnamese-250h` chỉ có `pytorch_model.bin`. | Dùng torch/torchaudio **2.6.0** CPU (bản vá; `forced_align`/`merge_tokens` vẫn có, chưa deprecated). Không hạ transformers xuống bản có lỗ hổng. |
 | 18 | §6.6 "người mua ký thông điệp" | Chữ ký ECDSA tất định: hai yêu cầu tải trong cùng một giây cho ra cùng chữ ký và bị chặn chống phát lại. | Thông điệp tải có thêm `Nonce` ngẫu nhiên do server cấp (`GET /datasets/{id}/download-message`). |
 | 19 | §10.1 bước 6 "chống trùng" | Phạm vi chưa nói rõ. | sha256 của audio chuẩn hóa không được trùng với bản ghi đang hiệu lực ở **mọi** chiến dịch (chặn dùng lại một bản ghi). Xóa khi thu hồi. |

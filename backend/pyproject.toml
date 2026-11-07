@@ -25,6 +25,7 @@ testpaths = ["tests"]
 markers = [
     "integration: cần anvil + contract đã build (tự khởi chạy anvil)",
     "qc: chạy model wav2vec2 + Silero VAD thật (tải model lần đầu)",
+    "postgres: cần TEST_DATABASE_URL (PostgreSQL/Neon), chạy trong schema tạm",
 ]
 addopts = "-ra"
 filterwarnings = ["ignore::DeprecationWarning"]

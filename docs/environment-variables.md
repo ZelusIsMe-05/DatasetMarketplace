@@ -30,6 +30,25 @@ Danh sách này lấy trực tiếp từ code: `backend/app/core/config.py`, `co
 **Chỉ cần làm thêm nếu muốn thử nút "Đăng nhập với Google" ở local:** lấy Google Client ID (mục 3.F) rồi đặt cùng một giá
 trị vào `GOOGLE_CLIENT_ID` (backend) và `NEXT_PUBLIC_GOOGLE_CLIENT_ID` (frontend), thêm origin `http://localhost:3000`.
 
+### 1b. (Tùy chọn) Database trên Neon thay cho SQLite
+
+1. Đăng ký **neon.tech** (gói Free), tạo project, region **AWS Asia Pacific (Singapore)**.
+2. Nhánh: giữ `production` cho Fuji; **Create child branch** → tên `dev`, **Auto-delete: Never** (nếu đặt hạn, nhánh và dữ
+   liệu tự bị xóa), kiểu *Branch data and schema*.
+3. Chọn nhánh `dev` → nút **Connect** (cột trái) → Database `neondb`, Role `neondb_owner`, **tắt Connection pooling** →
+   *Connection string* → **Show password** → **Copy**.
+4. Thêm vào `backend\.env.local` (file đã nằm trong `.gitignore`; không dán chuỗi này vào chat/issue):
+
+```dotenv
+DATABASE_URL=postgresql://neondb_owner:<mật-khẩu>@ep-xxxx.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+```
+
+5. Khởi động backend: `GET /health` trả `"database": "postgresql"`. Lỡ để lộ mật khẩu: Neon → *Roles* → *Reset password*
+   rồi cập nhật lại dòng trên.
+
+Database Neon dùng chung qua các lần khởi động lại Anvil, nên khi chain mới mà database còn dữ liệu cũ, backend từ chối khởi
+động — chạy `scripts\reset-db.bat` (xóa database + audio cùng lúc). Audio vẫn lưu trên đĩa máy backend (`storage\`).
+
 ---
 
 ## 2. Danh sách việc cần làm cho FUJI (nộp bài)
@@ -117,6 +136,20 @@ thiếu hoặc `JWT_SECRET`/`TOKEN_SECRET` ngắn hơn 32 ký tự.
    (ví dụ `https://giongque.vercel.app`). Nút đăng nhập dạng popup không cần *redirect URI*.
 5. Copy **Client ID** (dạng `xxxxxxxx.apps.googleusercontent.com`) — **không cần client secret** (backend chỉ xác minh ID token).
 6. Đặt **cùng một giá trị** cho `GOOGLE_CLIENT_ID` (backend) và `NEXT_PUBLIC_GOOGLE_CLIENT_ID` (frontend).
+7. **Cho mọi tài khoản Gmail đăng nhập** (không chỉ Test users): nút *Publish app* bị mờ cho tới khi trang **Branding** có đủ
+   tên ứng dụng, email hỗ trợ, **trang chủ** và **chính sách quyền riêng tư** trên một tên miền thật (không nhận `localhost`)
+   cùng **Authorized domains** tương ứng. Hai trang này nằm ở thư mục `site/` và được đăng bằng GitHub Pages (nhánh `gh-pages`,
+   repo phải public): trang chủ `https://zelusisme-05.github.io/DatasetMarketplace/`, chính sách
+   `https://zelusisme-05.github.io/DatasetMarketplace/privacy.html`, miền `zelusisme-05.github.io`. Sau đó *Google Auth
+   Platform* → **Audience** → *Publishing status* **Testing** → bấm **Publish app** → xác nhận → trạng thái thành **In production**. Ứng dụng chỉ xin `openid`/`email`/`profile`
+   (scope không nhạy cảm) nên **không cần** Google xác minh; đừng tải logo lên ở mục *Branding* (có logo ⇒ phải chờ xác minh
+   thương hiệu). Ở *Testing*, tài khoản ngoài danh sách bị chặn với lỗi *"Access blocked … has not completed the Google
+   verification process"* / `access_denied`.
+8. Mở web bằng **`http://localhost:3000`**, không phải `http://127.0.0.1:3000` — Google không nhận địa chỉ IP làm origin
+   (nút báo *"The given origin is not allowed for the given client ID"*; giao diện hiện nhắc chuyển sang localhost).
+   Máy khác/điện thoại cần một domain HTTPS (deploy hoặc tunnel) và thêm domain đó vào bước 4.
+
+Backend chấp nhận **mọi** email Google đã xác minh (`email_verified`), không giới hạn domain; mỗi email gắn đúng một ví.
 
 ### G. Địa chỉ public
 
@@ -190,8 +223,10 @@ Không chạy SeedDemo, không có faucet, không có đăng nhập thử ở ma
 | `DEV_AUTH_ENABLED` | — | `true` ở local | **Chỉ được bật ở local**, mạng khác bật ⇒ không khởi động |
 | `API_PUBLIC_URL` | fuji, mainnet | `http://127.0.0.1:8000` | URL public của backend |
 | `CORS_ORIGINS` | fuji, mainnet | `http://localhost:3000,http://127.0.0.1:3000` | Origin frontend được phép gọi API |
-| `STORAGE_DIR` | không | `storage/` | Nơi lưu DB + audio riêng tư |
-| `DATABASE_URL` | không | SQLite trong `STORAGE_DIR` | Dùng Postgres nếu cần |
+| `STORAGE_DIR` | không | `storage/` | Nơi lưu audio riêng tư (và file SQLite khi không dùng `DATABASE_URL`) |
+| `DATABASE_URL` | không | SQLite trong `STORAGE_DIR` | Chuỗi PostgreSQL, ví dụ Neon (mục 1b). Dán nguyên `postgresql://...?sslmode=require` |
+| `DATABASE_SCHEMA` | không | schema mặc định (`public`) | Schema PostgreSQL riêng (chữ thường, số, `_`) — tách dữ liệu nhiều deployment trong một database |
+| `TEST_DATABASE_URL` | không (chỉ test) | — | Bật `tests/integration/test_postgres.py`; test chạy trong schema tạm rồi tự xóa |
 | `SESSION_TTL_SEC` · `PROMPT_TOKEN_TTL_SEC` · `DOWNLOAD_TOKEN_TTL_SEC` · `SIGNATURE_MAX_AGE_SEC` | không | 43200 · 60 · 600 · 300 | Thời hạn phiên, câu mẫu, link tải, chữ ký |
 | `RATE_LIMIT_ENABLED` · `RATE_LIMIT_FAUCET` | không | `true` · 200/giờ (local), 5/giờ (khác) | Giới hạn tần suất |
 | `FAUCET_MAX_USDC` · `MAX_UPLOAD_BYTES` | không | 2000 · 5 MB | Giới hạn faucet, kích thước audio |

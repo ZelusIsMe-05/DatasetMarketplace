@@ -11,8 +11,10 @@ Anvil qua CMD · **pending Fuji** = chưa deploy lên Fuji.
 |---|---|---|
 | Contract build + test | `forge test -vv` (qua `scripts\test-all.bat`) | **37/37 đạt** (7 test gốc + 30 bổ sung, fuzz 512 lần) |
 | Lỗi làm tròn của bản gốc | đổi tạm về công thức gốc rồi chạy test | `test_RoundingNeverInsolvent` + `testFuzz_Solvency` **trượt** với bản gốc ⇒ lỗi có thật; bản sửa đạt |
-| Unit + QC model thật | `pytest tests/unit` | **43/43 đạt** (8 bản đọc thật `pass`, CER 0.00, align ≥ 0.97; sai câu, im lặng, quá ngắn, đọc thiếu bị chặn; webm/opus) |
+| Unit + QC model thật | `pytest tests/unit` | **54/54 đạt** (8 bản đọc thật `pass`, CER 0.00, align ≥ 0.97; sai câu, im lặng, quá ngắn, đọc thiếu bị chặn; webm/opus) |
 | Tích hợp | `pytest tests/integration` (tự chạy Anvil) | **11/11 đạt** |
+| PostgreSQL/Neon | `TEST_DATABASE_URL=… pytest tests/integration/test_postgres.py` (schema tạm trên Neon) | **5/5 đạt**: migration, toàn bộ luồng nghiệp vụ, chốt chặn deployment, script reset (database + audio), khởi động lại chỉ còn seed |
+| Stack thật trên Neon (nhánh `dev`) | `deploy-local` + `start-backend` (`/health` → `postgresql`), `demo-local.bat`, Playwright | demo **51/51 + 12/12**, e2e trình duyệt **7/7**, a11y **10/10**; Anvil khởi động lại ⇒ backend từ chối database cũ; `reset_db` ⇒ chỉ còn chiến dịch mẫu |
 | Chốt chặn mainnet | Deploy/SeedDemo trên Anvil chain id 43114 | `USDC_ADDRESS is not a contract`, `SeedDemo must never run on mainnet`; backend từ chối `mUSDC` |
 | Script Windows | `setup.bat`, `start-anvil.bat`, `deploy-local.bat`, `start-backend.bat`, `test-all.bat`, `demo-local.bat`, `giongque.bat` chạy trong `cmd.exe` | đều exit 0 |
 | Demo e2e | `scripts\demo-local.bat` (deployment sạch; 07/11 chạy trên Anvil/backend tạm ở cổng riêng và CLI home riêng) | **`demo e2e` 51/51**, **`demo scenario-611` 12/12**; đã dừng dịch vụ tạm và khôi phục file địa chỉ deployment ban đầu. Bộ đang chạy có email ví test từ e2e nên cần dữ liệu riêng cho demo CLI. |
@@ -33,9 +35,9 @@ Anvil qua CMD · **pending Fuji** = chưa deploy lên Fuji.
 | `Deploy.s.sol` / `SeedDemo.s.sol` | ✅ | ✅ (guard mainnet) | ✅ | SeedDemo băm file câu mẫu/điều khoản thật |
 | Config `NETWORK=local/fuji/mainnet` | ✅ | ✅ | ✅ (local) | |
 | Money VNĐ ↔ USDC, `/fx` | ✅ | ✅ | ✅ | tỷ giá HTTP (mainnet) chưa thử với nguồn thật |
-| Database + Alembic (15 bảng) | ✅ | ✅ | ✅ | |
+| Database + Alembic (15 bảng) — SQLite hoặc PostgreSQL/Neon | ✅ | ✅ | ✅ (cả Neon) | đóng dấu deployment, reset đồng bộ database + audio |
 | Auth dev (local) + gắn 1 email ↔ 1 ví | ✅ | ✅ | ✅ | |
-| Auth Google `POST /auth/google` | ✅ | ⚠️ chưa | ⚠️ chưa | cần `GOOGLE_CLIENT_ID` thật để thử |
+| Auth Google `POST /auth/google` | ✅ | ⚠️ chưa | ⚠️ chưa | Client ID thật đã cấu hình; chưa có ID token thật (cần người đăng nhập Google) |
 | Campaign (nháp, hash, liên kết metadata, chi tiết, điều khoản) | ✅ | ✅ | ✅ | |
 | Consent EIP-712 + relayer | ✅ | ✅ | ✅ | người dùng không tốn AVAX (đã kiểm số dư) |
 | Prompt token HMAC 60 giây + chống audio chuẩn bị sẵn | ✅ | ✅ | ✅ | |
@@ -55,7 +57,7 @@ Anvil qua CMD · **pending Fuji** = chưa deploy lên Fuji.
 | Frontend: quản trị (hàng chờ, nghe, duyệt/loại, công bố phiên bản, relayer) | ✅ | ✅ công bố phiên bản | ✅ | duyệt/loại vùng xám đã test ở backend, chưa test qua UI |
 | Mật khẩu ví mạnh (chữ hoa, chữ thường, số, ký tự đặc biệt, ≥ 8 ký tự) + nút con mắt hiện/ẩn + thông báo điều kiện trực tiếp | ✅ | ✅ (e2e: mật khẩu yếu bị chặn, con mắt, chưa khớp/đã khớp; axe) | ✅ | áp dụng khi tạo ví mới; ví cũ vẫn mở khóa bằng mật khẩu cũ |
 | Tài liệu biến môi trường (`docs/environment-variables.md`) | ✅ | — | — | liệt kê từ code: 45 biến backend, 12 contracts, 4 frontend, 4 CLI |
-| Đăng nhập Google trên web (Google Identity Services) | ✅ | ⚠️ chưa | ⚠️ chưa | cần OAuth Client ID |
+| Đăng nhập Google trên web (Google Identity Services) | ✅ | ⚠️ một phần | ⚠️ một phần | 07/11: Chromium headless — Google nhận origin `http://localhost:3000` (nút HTTP 200, không lỗi), từ chối `127.0.0.1` (UI nhắc chuyển localhost). Mọi Gmail vào được chỉ sau khi *Publish app* (In production) trên Google Cloud |
 | Skills + `CLAUDE.md` + `docs/skills.md` | ✅ | — | — | 5 skills cấp project |
 
 ## Pending / chưa hoàn thành
@@ -64,7 +66,7 @@ Anvil qua CMD · **pending Fuji** = chưa deploy lên Fuji.
 |---|---|---|
 | Deploy Fuji + verify Snowtrace | **pending Fuji** | AVAX test từ Core faucet, ví đội, sự cho phép gửi giao dịch |
 | Backend + frontend chạy `NETWORK=fuji` | **pending Fuji** | địa chỉ contract Fuji, `.env.fuji` với secret thật |
-| Thử Google OAuth thật | chưa | OAuth Client ID |
+| Thử Google OAuth thật (đăng nhập hết luồng) | chưa | Publish app trên Google Cloud + một người bấm đăng nhập |
 | Hiệu chỉnh ngưỡng QC (§10.4) | chưa | 50 bản đúng + 50 bản sai do người thật ghi |
 | Thử frontend trên Safari/Firefox, điện thoại thật, Core/MetaMask thật | chưa | thiết bị/ví thật |
 | `setup.bat` trên máy Windows trắng | chưa thử trên máy trắng | đã chạy thành công trên máy hiện tại; nhánh tải Foundry đã thử riêng |

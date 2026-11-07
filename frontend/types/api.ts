@@ -18,6 +18,7 @@ export interface Health {
   relayer: string;
   relayer_balance_avax: number | null;
   db_ok: boolean;
+  database: "postgresql" | "sqlite";
   qc_model_loaded: boolean;
   dev_mode: boolean;
 }

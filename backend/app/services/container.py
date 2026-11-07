@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +14,7 @@ from app.blockchain.client import ChainClient
 from app.blockchain.indexer import EventIndexer
 from app.blockchain.relayer import Relayer, SignerPool
 from app.core.config import SEED_DIR, Settings
+from app.models import KvState
 from app.models.session import make_engine, make_session_factory, run_migrations, sqlite_url
 from app.qc.service import QcService
 from app.services.admin_service import AdminService
@@ -69,6 +71,37 @@ def deployment_fingerprint(chain: ChainClient, deploy_block: int) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:12]
 
 
+DEPLOYMENT_KEY = "deployment.fingerprint"
+
+
+def check_deployment_stamp(sf: sessionmaker[Session], fingerprint: str, chain_id: int, contract: str) -> None:
+    """Một database chỉ phục vụ một deployment (chain + contract).
+
+    Với SQLite mỗi deployment có file riêng nên luôn khớp. Với PostgreSQL dùng chung (Neon), khởi động lại Anvil
+    rồi deploy lại mà không reset database sẽ trộn dữ liệu chain cũ với chain mới (trùng campaignId, sai block
+    của indexer...) — chặn ngay và hướng dẫn cách xử lý.
+    """
+    with sf() as s:
+        row = s.get(KvState, DEPLOYMENT_KEY)
+        if row is None:
+            s.add(KvState(key=DEPLOYMENT_KEY, value=json.dumps({"fingerprint": fingerprint, "chainId": chain_id, "contract": contract})))
+            s.commit()
+            return
+        old = json.loads(row.value)
+        if old.get("fingerprint") != fingerprint:
+            same_address = str(old.get("contract", "")).lower() == contract.lower()
+            what = (
+                f"cùng địa chỉ contract {contract} nhưng là chain MỚI (Anvil đã khởi động lại)"
+                if same_address
+                else f"chain {old.get('chainId')}, contract {old.get('contract')}; hiện tại: chain {chain_id}, contract {contract}"
+            )
+            raise StartupError(
+                f"Database đang chứa dữ liệu của một deployment khác ({what}). "
+                "Local: chạy scripts\\reset-db.bat để xóa dữ liệu cũ (database + audio) rồi khởi động lại backend. "
+                "Fuji/mainnet: KHÔNG reset — dùng DATABASE_SCHEMA hoặc branch Neon khác cho contract mới."
+            )
+
+
 def build_container(settings: Settings, qc_service: QcService | None = None) -> Container:
     chain = ChainClient(settings.rpc_url, settings.voice_campaigns, settings.token)
     try:
@@ -91,9 +124,13 @@ def build_container(settings: Settings, qc_service: QcService | None = None) -> 
     data_dir = settings.storage_root / f"{settings.network.name}-{fingerprint}"
     data_dir.mkdir(parents=True, exist_ok=True)
     db_url = settings.database_url or sqlite_url(data_dir / "giongque.db")
-    run_migrations(db_url)
-    engine = make_engine(db_url)
+    try:
+        run_migrations(db_url, settings.database_schema)
+    except Exception as e:  # noqa: BLE001
+        raise StartupError(f"Không kết nối/migrate được database: {type(e).__name__}: {str(e).splitlines()[0][:200]}") from e
+    engine = make_engine(db_url, settings.database_schema)
     sf = make_session_factory(engine)
+    check_deployment_stamp(sf, fingerprint, chain_id, chain.address)
 
     pool = SignerPool(lambda key: Relayer(chain.w3, key, sf))
     relayer = pool.get(settings.relayer_key)
@@ -140,5 +177,9 @@ def build_container(settings: Settings, qc_service: QcService | None = None) -> 
     campaigns.relink_unverified()
     if qc_signer.address != chain.qc_oracle():
         log.warning("Ví QC oracle của backend (%s) KHÁC qcOracle on-chain (%s)", qc_signer.address, chain.qc_oracle())
-    log.info("Container sẵn sàng: %s chain=%s data=%s", settings.network.name, chain_id, data_dir)
+    log.info(
+        "Container sẵn sàng: %s chain=%s database=%s%s audio=%s",
+        settings.network.name, chain_id, engine.dialect.name,
+        f" (schema {settings.database_schema})" if settings.database_schema else "", data_dir / "audio",
+    )
     return c

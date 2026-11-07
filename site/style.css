@@ -1,0 +1,56 @@
+:root {
+  --bg: #f7f9fc;
+  --surface: #ffffff;
+  --ink: #0f172a;
+  --muted: #475569;
+  --line: #e2e8f0;
+  --brand: #2563eb;
+  --brand-soft: #eff6ff;
+  --warn-bg: #fffbeb;
+  --warn-line: #fde68a;
+  --warn-ink: #92400e;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1120;
+    --surface: #111a2e;
+    --ink: #e2e8f0;
+    --muted: #94a3b8;
+    --line: #1e293b;
+    --brand: #60a5fa;
+    --brand-soft: #172554;
+    --warn-bg: #2a1f0a;
+    --warn-line: #78350f;
+    --warn-ink: #fcd34d;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+a { color: var(--brand); }
+.wrap { max-width: 760px; margin: 0 auto; padding: 0 16px; }
+header { border-bottom: 1px solid var(--line); background: var(--surface); }
+header .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; flex-wrap: wrap; }
+.logo { font-weight: 700; font-size: 18px; color: var(--ink); text-decoration: none; }
+.logo span { color: var(--brand); }
+nav a { margin-left: 16px; text-decoration: none; font-weight: 500; }
+main.wrap { padding: 40px 16px 56px; }
+h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.2; margin: 0 0 12px; }
+h2 { font-size: 21px; margin: 36px 0 8px; }
+.lead { font-size: 18px; color: var(--muted); margin: 0 0 24px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px 24px; margin: 16px 0; }
+.note { background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--warn-ink); border-radius: 12px; padding: 12px 16px; }
+.steps { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); padding: 0; list-style: none; }
+.steps li { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+.steps b { display: block; margin-bottom: 4px; }
+.meta { color: var(--muted); font-size: 14px; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; }
+footer { border-top: 1px solid var(--line); padding: 24px 0; color: var(--muted); font-size: 14px; }

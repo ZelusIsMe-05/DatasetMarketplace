@@ -159,8 +159,12 @@ Nhấn `Ctrl+C` lần lượt trong cửa sổ **frontend → backend → Anvil*
 - Nếu Anvil chạy không có `persist`, lần khởi động sau là chain mới: chạy lại deploy, backend và frontend.
 - Nếu Anvil chạy với `persist`, dừng bình thường bằng `Ctrl+C` để lưu `storage\anvil-state.json`.
   Lần sau dùng lại `persist`; khi trạng thái cũ được khôi phục và file deployment còn khớp, bỏ qua deploy.
-- Database và audio vẫn nằm trong `storage\<network>-<fingerprint>\` sau khi dừng backend.
-- `scripts\reset-local.bat` xóa dữ liệu local, không dùng để dừng dịch vụ.
+- Audio vẫn nằm trong `storage\<network>-<fingerprint>\audio\` sau khi dừng backend; database nằm cùng thư mục (SQLite)
+  hoặc trên Neon nếu `backend\.env.local` có `DATABASE_URL`.
+- Anvil khởi động lại (chain mới) mà dùng Neon: backend sẽ **từ chối khởi động** vì database còn dữ liệu chain cũ —
+  chạy `scripts\reset-db.bat` (xóa database + audio) rồi khởi động lại backend.
+- `scripts\reset-local.bat` **xóa** dữ liệu local (database + audio + trạng thái Anvil đã lưu), không dùng để dừng dịch vụ.
+  Sau đó `start-anvil` → `deploy-local` → `start-backend` là trở về trạng thái chỉ có chiến dịch mẫu.
 
 ## 7. Lỗi thường gặp khi chạy
 

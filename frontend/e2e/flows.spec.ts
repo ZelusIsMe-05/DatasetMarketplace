@@ -32,7 +32,9 @@ test("người tạo: kết nối ví, đăng nhập, tạo chiến dịch có q
   const { page, ctx, errors } = await role(browser, ANVIL.creator);
   await page.goto("/create");
   await page.getByRole("main").getByRole("button", { name: "Kết nối ví" }).click();
-  await page.getByLabel("Email tổ chức").fill("creator-e2e@giongque.vn");
+  // Cùng email với CLI (`giongque login --as creator`): một ví chỉ gắn một email, nên CLI demo và e2e
+  // chạy chung một database (vd. Neon) theo thứ tự nào cũng được.
+  await page.getByLabel("Email tổ chức").fill("creator@giongque.local");
   await page.getByRole("button", { name: "Đăng nhập thử" }).click();
   await expect(page.getByRole("link", { name: "+ Tạo chiến dịch mới" })).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/creator-dashboard.png`, fullPage: true });

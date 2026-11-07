@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -90,7 +91,8 @@ class Settings:
     rate_limit_enabled: bool
     rate_limit_faucet: str
     storage_root: Path
-    database_url: str | None  # None = SQLite trong thư mục dữ liệu của deployment
+    database_url: str | None  # None = SQLite trong thư mục dữ liệu của deployment; có = PostgreSQL (vd. Neon)
+    database_schema: str | None  # schema PostgreSQL (None = schema mặc định của URL, thường là public)
     auto_snapshot_on_revoke: bool
     indexer_interval_sec: float
     log_chunk_blocks: int
@@ -122,6 +124,60 @@ def _merged_env(network: str, env_file: Path | None) -> dict[str, str]:
     merged = dict(file_vals)
     merged.update({k: v for k, v in os.environ.items()})
     return merged
+
+
+_SCHEMA_RE = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
+
+
+def normalize_database_url(url: str | None) -> str | None:
+    """Chuỗi Neon/Postgres dạng postgresql:// hoặc postgres:// -> driver psycopg 3 của SQLAlchemy.
+
+    Giữ nguyên tham số truy vấn (sslmode, channel_binding...). URL đã chỉ rõ driver thì không đổi.
+    """
+    if not url:
+        return None
+    url = url.strip()
+    for prefix in ("postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix) :]
+    return url
+
+
+def validate_schema(schema: str | None) -> str | None:
+    if not schema:
+        return None
+    if not _SCHEMA_RE.match(schema):
+        raise ValueError("DATABASE_SCHEMA chỉ gồm chữ thường, số, dấu _ (tối đa 63 ký tự, không bắt đầu bằng số)")
+    return schema
+
+
+@dataclass(frozen=True)
+class DbConfig:
+    """Phần cấu hình lưu trữ — đọc được mà không cần chain (dùng cho script reset)."""
+
+    network: str
+    database_url: str | None
+    database_schema: str | None
+    storage_root: Path
+
+    @property
+    def is_postgres(self) -> bool:
+        return bool(self.database_url and self.database_url.startswith("postgresql"))
+
+
+def load_db_config(env_file: Path | None = None, overrides: dict[str, str] | None = None) -> DbConfig:
+    base = {**os.environ, **(overrides or {})}
+    name = base.get("NETWORK", "local")
+    if name not in PROFILES:
+        raise ValueError(f"NETWORK phải là một trong {list(PROFILES)}")
+    env = _merged_env(name, env_file)
+    env.update(overrides or {})
+    return DbConfig(
+        network=name,
+        database_url=normalize_database_url(env.get("DATABASE_URL")),
+        database_schema=validate_schema(env.get("DATABASE_SCHEMA")),
+        storage_root=Path(env.get("STORAGE_DIR") or REPO_DIR / "storage"),
+    )
 
 
 def read_deployment(chain_id: int) -> dict | None:
@@ -216,7 +272,8 @@ def load_settings(env_file: Path | None = None, overrides: dict[str, str] | None
         rate_limit_enabled=_env_bool(env, "RATE_LIMIT_ENABLED", True),
         rate_limit_faucet=env.get("RATE_LIMIT_FAUCET") or ("200/hour" if name == "local" else "5/hour"),
         storage_root=Path(env.get("STORAGE_DIR") or REPO_DIR / "storage"),
-        database_url=env.get("DATABASE_URL") or None,
+        database_url=normalize_database_url(env.get("DATABASE_URL")),
+        database_schema=validate_schema(env.get("DATABASE_SCHEMA")),
         auto_snapshot_on_revoke=_env_bool(env, "AUTO_SNAPSHOT_ON_REVOKE", True),
         indexer_interval_sec=float(env.get("INDEXER_INTERVAL_SEC", "5")),
         log_chunk_blocks=int(env.get("LOG_CHUNK_BLOCKS", "2000")),

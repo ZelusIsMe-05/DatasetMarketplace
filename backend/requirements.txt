@@ -17,6 +17,7 @@ requests>=2.31
 # ---- Database ----
 SQLAlchemy>=2.0.30,<2.1
 alembic>=1.13
+psycopg[binary]>=3.2,<4   # PostgreSQL (Neon) khi đặt DATABASE_URL
 
 # ---- Blockchain ----
 web3>=7.0,<8
