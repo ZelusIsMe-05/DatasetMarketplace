@@ -4,46 +4,74 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Dataset Marketplace</title>
-  <meta name="description" content="Chợ dữ liệu giọng nói tiếng Việt có đồng thuận — người đóng góp ghi âm, được chia doanh thu minh bạch trên Avalanche.">
+  <meta name="description" content="Chợ dữ liệu giọng nói tiếng Việt có đồng thuận — người đóng góp ghi âm và được chia doanh thu minh bạch.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&amp;display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
+  <header class="site-header">
     <div class="wrap">
-      <a class="logo" href="./">Dataset <span>Marketplace</span></a>
-      <nav><a href="privacy.html">Quyền riêng tư</a><a href="https://github.com/ZelusIsMe-05/DatasetMarketplace">Mã nguồn</a></nav>
+      <a class="logo" href="./" aria-label="Dataset Marketplace — trang chủ">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#2563eb"/><g stroke="#fff" stroke-width="2.6" stroke-linecap="round"><path d="M9 13v6"/><path d="M13.5 9v14"/><path d="M18 12v8"/><path d="M22.5 14.5v3"/></g></svg>
+        Dataset <span>Marketplace</span>
+      </a>
+      <nav class="nav" aria-label="Điều hướng">
+        <a href="./" aria-current="page">Trang chủ</a>
+        <a href="privacy.html">Quyền riêng tư</a>
+        <a href="https://github.com/ZelusIsMe-05/DatasetMarketplace">Mã nguồn</a>
+      </nav>
     </div>
   </header>
-  <main class="wrap">
-    <h1>Chợ dữ liệu giọng nói tiếng Việt có đồng thuận</h1>
-    <p class="lead">Người đóng góp đọc các câu mẫu, bản ghi đạt chất lượng được đóng gói thành bộ dữ liệu cho người huấn luyện
-      AI mua. Mỗi lần bán, doanh thu được chia cho người đóng góp theo số giây giọng nói hợp lệ — ghi trên blockchain Avalanche.</p>
 
-    <p class="note">Đây là bản thử nghiệm của đội Team1 Vietnam UniHack 2026, chạy trên mạng thử nghiệm (không dùng tiền thật).
-      Dữ liệu ở giai đoạn này có thể bị xóa khi hệ thống được cài đặt lại.</p>
+  <div class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Team1 Vietnam UniHack 2026</p>
+      <h1>Chợ dữ liệu <em>giọng nói tiếng Việt</em><br>có đồng thuận</h1>
+      <p class="lead">Bạn đọc vài câu mẫu bằng giọng của mình. Bản ghi đạt chất lượng được đóng gói thành bộ dữ liệu cho người
+        làm AI mua — và mỗi lần bán, bạn được chia doanh thu theo số giây giọng nói hợp lệ.</p>
+      <div class="wave" aria-hidden="true">
+        <i style="height:30%"></i><i style="height:55%"></i><i style="height:80%"></i><i style="height:45%"></i><i style="height:95%"></i><i style="height:60%"></i><i style="height:35%"></i><i style="height:70%"></i><i style="height:100%"></i><i style="height:50%"></i><i style="height:25%"></i><i style="height:65%"></i><i style="height:85%"></i><i style="height:40%"></i><i style="height:60%"></i><i style="height:30%"></i>
+      </div>
+    </div>
+  </div>
 
-    <h2>Cách hoạt động</h2>
-    <ol class="steps">
-      <li><b>1. Đăng nhập</b>Bằng tài khoản Google. Mỗi email gắn với đúng một ví để chống tạo nhiều tài khoản.</li>
-      <li><b>2. Đồng thuận</b>Bạn đọc điều khoản và ký đồng thuận cho từng chiến dịch. Có thể thu hồi bất cứ lúc nào.</li>
-      <li><b>3. Ghi âm</b>Đọc câu mẫu được giao. Máy chủ kiểm tra chất lượng tự động; bản không đạt bị xóa ngay.</li>
-      <li><b>4. Nhận tiền</b>Mỗi lần bộ dữ liệu được bán, phần của bạn tăng theo số giây hợp lệ. Rút về ví khi muốn.</li>
-    </ol>
+  <main>
+    <div class="wrap">
+      <p class="note">Đây là bản thử nghiệm, chạy trên mạng thử nghiệm (không dùng tiền thật). Dữ liệu ở giai đoạn này có thể bị
+        xóa khi hệ thống được cài đặt lại.</p>
 
-    <h2>Cam kết về dữ liệu</h2>
-    <div class="card">
-      <ul>
-        <li>Giọng nói <b>không bao giờ</b> được đưa lên blockchain — chỉ có mã băm có salt và số giây hợp lệ.</li>
-        <li>Thu hồi đồng thuận ⇒ máy chủ xóa thật bản ghi âm và salt; bản ghi bị loại khỏi các phiên bản dữ liệu sau.</li>
-        <li>Đăng nhập Google chỉ dùng để xác minh email. Không đọc Gmail, Drive, danh bạ hay bất kỳ dữ liệu nào khác.</li>
-      </ul>
-      <p>Chi tiết: <a href="privacy.html">Chính sách quyền riêng tư</a>.</p>
+      <section aria-labelledby="how">
+        <h2 id="how">Cách hoạt động</h2>
+        <ol class="steps">
+          <li><b>Đăng nhập</b>Bằng tài khoản Google. Mỗi tài khoản gắn với đúng một ví.</li>
+          <li><b>Đồng thuận</b>Đọc điều khoản và đồng ý cho từng chiến dịch. Có thể rút lại bất cứ lúc nào.</li>
+          <li><b>Ghi âm</b>Đọc câu mẫu được giao. Máy kiểm tra chất lượng tự động; bản không đạt bị xóa ngay.</li>
+          <li><b>Nhận tiền</b>Mỗi lần bộ dữ liệu được bán, phần của bạn tăng theo số giây hợp lệ. Rút về ví khi muốn.</li>
+        </ol>
+      </section>
+
+      <section aria-labelledby="promise">
+        <h2 id="promise">Cam kết về dữ liệu</h2>
+        <div class="card">
+          <ul class="checks">
+            <li>Giọng nói của bạn <b>không bao giờ</b> được đưa lên blockchain — chỉ có mã băm và số giây hợp lệ.</li>
+            <li>Bản ghi âm nằm trong kho lưu trữ riêng tư, được mã hóa; chỉ người mua đã trả tiền mới tải được.</li>
+            <li>Rút lại đồng thuận ⇒ bản ghi âm bị xóa thật và không còn trong các phiên bản dữ liệu sau.</li>
+            <li>Đăng nhập Google chỉ để xác minh email — không đọc Gmail, Drive hay danh bạ.</li>
+          </ul>
+          <a class="cta" href="privacy.html">Đọc chính sách quyền riêng tư</a>
+        </div>
+      </section>
     </div>
   </main>
-  <footer>
-    <div class="wrap">Dataset Marketplace · Team1 Vietnam UniHack 2026 ·
-      <a href="privacy.html">Chính sách quyền riêng tư</a> ·
-      <a href="https://github.com/ZelusIsMe-05/DatasetMarketplace/issues">Liên hệ</a></div>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>© 2026 Dataset Marketplace · Team1 Vietnam UniHack</span>
+      <span><a href="privacy.html">Quyền riêng tư</a> · <a href="https://github.com/ZelusIsMe-05/DatasetMarketplace/issues">Liên hệ</a></span>
+    </div>
   </footer>
 </body>
 </html>
