@@ -1,3 +1,3 @@
 from cli.main import app
 
-app(prog_name="giongque")
+app(prog_name="datasetmarketplace")

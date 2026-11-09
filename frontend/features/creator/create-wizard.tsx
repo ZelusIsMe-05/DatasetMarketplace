@@ -3,23 +3,25 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import { decodeEventLog, type Address } from "viem";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { whenVisible } from "@/lib/visibility";
+import type { Address } from "viem";
 import type { CampaignDraftRequest } from "@/types/api";
-import { TOKEN_ABI, VOICE_CAMPAIGNS_ABI } from "@/lib/contracts";
-import { formatDuration, formatNumber } from "@/lib/format";
-import { formatVnd } from "@/lib/money";
-import { qk, useFx } from "@/hooks/queries";
-import { useAddresses } from "@/hooks/useChain";
-import { useContractTx } from "@/hooks/useContractTx";
+import { describeChainError } from "@/lib/chainErrors";
+import { network } from "@/lib/config";
+import { formatDuration, formatNumber, parseViNumber } from "@/lib/format";
+import { formatVnd, moneyFromUnits } from "@/lib/money";
+import { qk, useFees, useFx } from "@/hooks/queries";
+import { useTokenBalance } from "@/hooks/useChain";
 import { useWalletSession } from "@/hooks/useSessions";
+import { useSponsoredFlow } from "@/hooks/useSponsored";
 import { publicApi } from "@/services/api";
 import { useToast } from "@/providers/toast-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Stepper } from "@/components/ui/misc";
-import { TxSteps, type TxStepView } from "@/components/tx/tx-steps";
+import { TxSteps } from "@/components/tx/tx-steps";
 import { ACCENT_OPTIONS } from "@/features/marketplace/labels";
 import { TERMS_TEMPLATE } from "@/features/creator/terms-template";
 
@@ -63,14 +65,53 @@ function checkPrompts(text: string) {
   return { lines, errors };
 }
 
+const PROMPT_FILE_MAX_BYTES = 512_000;
+
+/**
+ * Next.js 16 giữ trang vừa rời trong <Activity hidden> nên state của form KHÔNG mất khi điều hướng. Sau khi tạo chiến dịch
+ * thành công, lúc trang bị ẩn (effect cleanup) ta đổi `key` ⇒ lần sau mở "Tạo chiến dịch mới" là form trống.
+ * Đang điền dở mà rời trang thì vẫn giữ bản nháp.
+ */
 export function CreateWizard() {
+  const [round, setRound] = useState(0);
+  const created = useRef(false);
+  useEffect(
+    () => () => {
+      if (!created.current) return;
+      created.current = false;
+      setRound((r) => r + 1);
+    },
+    [],
+  );
+  return <WizardForm key={round} onCreated={() => { created.current = true; }} />;
+}
+
+function WizardForm({ onCreated }: { onCreated: () => void }) {
   const [step, setStep] = useState(0);
   const [f, setF] = useState<Form>(INITIAL);
   const set = (k: keyof Form) => (e: { target: { value: string } }) => setF((x) => ({ ...x, [k]: e.target.value }));
   const fx = useFx();
+  const toast = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
   const rate = fx.data?.rate ?? 0;
   const prompts = useMemo(() => checkPrompts(f.prompts), [f.prompts]);
-  const num = (s: string) => Number(s.replace(/[.\s]/g, "").replace(",", "."));
+  const num = parseViNumber;
+
+  /** Nhập bộ câu mẫu từ file .txt (UTF-8, mỗi dòng một câu) — đọc ngay trên trình duyệt, không tải file lên máy chủ. */
+  const importPrompts = async (file: File) => {
+    if (file.size > PROMPT_FILE_MAX_BYTES) {
+      toast.error("File quá lớn", "Tối đa 500 KB, mỗi dòng một câu.");
+      return;
+    }
+    const text = (await file.text()).replace(/^﻿/, "").replace(/\r\n?/g, "\n").trim();
+    const n = text.split("\n").filter((l) => l.trim()).length;
+    if (n === 0) {
+      toast.error("File không có câu nào", "Mỗi dòng trong file là một câu mẫu.");
+      return;
+    }
+    setF((x) => ({ ...x, prompts: text }));
+    toast.success("Đã nhập câu mẫu từ file", `${n} câu từ ${file.name}. Kiểm tra lỗi (nếu có) ngay dưới ô câu mẫu.`);
+  };
   const contributor = num(f.contributorPct);
   const creator = num(f.creatorPct);
   const platform = 100 - contributor - creator;
@@ -104,8 +145,28 @@ export function CreateWizard() {
             )}
             {step === 1 && (
               <>
-                <h2 className="text-h3">Bộ câu mẫu</h2>
-                <p className="text-sm text-ink-muted">Mỗi dòng một câu, 6–20 từ, viết số bằng chữ (“hai mươi lăm” thay vì “25”), tránh tên riêng hiếm. Câu chỉ hiện cho người đóng góp lúc họ bấm ghi âm.</p>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-h3">Bộ câu mẫu</h2>
+                  <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
+                    Nhập từ file .txt
+                  </Button>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    name="prompts-file"
+                    accept=".txt,text/plain"
+                    hidden
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void importPrompts(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+                <p className="text-sm text-ink-muted">
+                  Mỗi dòng một câu, 6–20 từ, viết số bằng chữ (“hai mươi lăm” thay vì “25”), tránh tên riêng hiếm. Câu chỉ hiện cho người đóng góp lúc họ bấm ghi âm.
+                  Có thể nhập từ file .txt (UTF-8, mỗi dòng một câu) rồi sửa tiếp trong ô bên dưới.
+                </p>
                 <Field label={`Câu mẫu (${prompts.lines.length} câu)`} error={prompts.errors.length ? prompts.errors.slice(0, 3).join(" · ") : null}>
                   <Textarea value={f.prompts} onChange={set("prompts")} className="min-h-64 font-mono text-sm" placeholder={"tôi muốn mở một tài khoản tiết kiệm có kỳ hạn sáu tháng\ncho tôi hỏi lãi suất gửi tiết kiệm hiện nay là bao nhiêu"} />
                 </Field>
@@ -133,7 +194,7 @@ export function CreateWizard() {
                 </div>
               </>
             )}
-            {step === 4 && <Review f={f} prompts={prompts.lines} num={num} />}
+            {step === 4 && <Review f={f} prompts={prompts.lines} num={num} onCreated={onCreated} />}
           </motion.div>
         </AnimatePresence>
         {step < 4 && (
@@ -155,90 +216,82 @@ export function CreateWizard() {
   );
 }
 
-function Review({ f, prompts, num }: { f: Form; prompts: string[]; num: (s: string) => number }) {
+function Review({ f, prompts, num, onCreated }: { f: Form; prompts: string[]; num: (s: string) => number; onCreated: () => void }) {
   const w = useWalletSession();
-  const { vc, token } = useAddresses();
-  const approveTx = useContractTx();
-  const createTx = useContractTx();
+  const fees = useFees();
+  const fx = useFx();
+  const balance = useTokenBalance(w.address as Address | undefined);
+  const flow = useSponsoredFlow();
   const qc = useQueryClient();
   const toast = useToast();
   const router = useRouter();
-  const [draftPhase, setDraftPhase] = useState<TxStepView["phase"]>("idle");
-  const [draftError, setDraftError] = useState<string>();
-  const [syncPhase, setSyncPhase] = useState<TxStepView["phase"]>("idle");
-  const [hasSeed, setHasSeed] = useState(num(f.seedVnd) > 0);
-  const [running, setRunning] = useState(false);
+  const [done, setDone] = useState(false);
+  const [fauceting, setFauceting] = useState(false);
 
   const price = num(f.priceVnd);
   const rows = [0, 25, 50, 75, 100].map((p) => ({ p, v: price * (0.3 + 0.7 * (p / 100)) }));
+  const seedVnd = num(f.seedVnd) > 0 ? num(f.seedVnd) : 0;
+  const feeVnd = fees.data?.create.vnd;
+  const totalVnd = feeVnd !== undefined ? seedVnd + feeVnd : undefined;
+  const wallet = balance.data !== undefined && fx.data ? moneyFromUnits(balance.data as bigint, fx.data.rate, "mUSDC") : undefined;
+  // So sánh gần đúng bằng VNĐ (máy chủ báo giá chính xác bằng USDC ở bước 1 của danh sách ký)
+  const short = totalVnd !== undefined && wallet !== undefined && wallet.vnd + 1 < totalVnd;
 
   const submit = async () => {
-    if (!w.api || !w.address || !vc || !token) return;
-    setRunning(true);
-    setDraftError(undefined);
-    approveTx.reset();
-    createTx.reset();
+    const api = w.api;
+    if (!api || !w.address) return;
+    const req: CampaignDraftRequest = {
+      name: f.name.trim(), description: f.description.trim(), purpose: f.purpose.trim(), accent: f.accent, license: f.license,
+      prompts, terms_text: f.terms, target_sec: Math.round(num(f.targetHours) * 3600), full_price_vnd: Math.round(price),
+      contributor_bps: Math.round(num(f.contributorPct) * 100), creator_bps: Math.round(num(f.creatorPct) * 100),
+      duration_days: Math.round(num(f.days)), seed_vnd: Math.round(num(f.seedVnd)), seed_vnd_per_minute: num(f.seedVnd) > 0 ? Math.round(num(f.seedPerMinVnd)) : 0,
+    };
+    let draftId = "";
     try {
-      setDraftPhase("pending");
-      const req: CampaignDraftRequest = {
-        name: f.name.trim(), description: f.description.trim(), purpose: f.purpose.trim(), accent: f.accent, license: f.license,
-        prompts, terms_text: f.terms, target_sec: Math.round(num(f.targetHours) * 3600), full_price_vnd: Math.round(price),
-        contributor_bps: Math.round(num(f.contributorPct) * 100), creator_bps: Math.round(num(f.creatorPct) * 100),
-        duration_days: Math.round(num(f.days)), seed_vnd: Math.round(num(f.seedVnd)), seed_vnd_per_minute: num(f.seedVnd) > 0 ? Math.round(num(f.seedPerMinVnd)) : 0,
-      };
-      let draft;
-      try {
-        draft = await w.api.createDraft(req);
-      } catch (e) {
-        const details = (e as { details?: { errors?: string[] } }).details?.errors;
-        throw new Error(details?.length ? `${(e as Error).message}: ${details.slice(0, 2).join("; ")}` : (e as Error).message);
+      const res = await flow.run(
+        async () => {
+          try {
+            draftId = (await api.createDraft(req)).draft_id;
+          } catch (e) {
+            const details = (e as { details?: { errors?: string[] } }).details?.errors;
+            throw new Error(details?.length ? `${(e as Error).message}: ${details.slice(0, 2).join("; ")}` : (e as Error).message);
+          }
+          return api.createQuote(draftId);
+        },
+        (signed) => api.createCampaign(draftId, signed),
+      );
+      setDone(true);
+      onCreated();
+      await Promise.all([qc.invalidateQueries({ queryKey: qk.campaigns }), balance.refetch()]);
+      toast.success("Đã tạo chiến dịch", `Chiến dịch #${res.campaign_id} đã sẵn sàng nhận bản ghi.`);
+      if (res.campaign_id !== null) {
+        await whenVisible(); // vừa ký trong cửa sổ ví: chuyển trang khi tab hiện lại
+        router.push(`/datasets/${res.campaign_id}`);
       }
-      setDraftPhase("success");
-      const a = draft.create_campaign_args;
-      setHasSeed(a.seedAmount > 0);
-      if (a.seedAmount > 0) {
-        await approveTx.run({ address: token, abi: TOKEN_ABI, functionName: "approve", args: [vc, BigInt(a.seedAmount)], account: w.address as Address });
-      }
-      const receipt = await createTx.run({
-        address: vc,
-        abi: VOICE_CAMPAIGNS_ABI,
-        functionName: "createCampaign",
-        args: [BigInt(a.targetSec), BigInt(a.fullPrice), a.contributorBps, a.creatorBps, BigInt(a.deadline), a.promptSetHash, a.termsHash, a.metadataURI, BigInt(a.seedRatePerSec), BigInt(a.seedAmount)],
-        account: w.address as Address,
-      });
-      let id: number | null = null;
-      for (const log of receipt.logs) {
-        try {
-          const ev = decodeEventLog({ abi: VOICE_CAMPAIGNS_ABI, data: log.data, topics: log.topics });
-          if (ev.eventName === "CampaignCreated") id = Number((ev.args as unknown as { campaignId: bigint }).campaignId);
-        } catch {
-          /* log của token */
-        }
-      }
-      setSyncPhase("pending");
-      await publicApi.sync();
-      setSyncPhase("success");
-      await qc.invalidateQueries({ queryKey: qk.campaigns });
-      toast.success("Đã tạo chiến dịch", id !== null ? `Chiến dịch #${id} đã sẵn sàng nhận bản ghi.` : undefined);
-      if (id !== null) router.push(`/datasets/${id}`);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Lỗi";
-      if (draftPhase !== "success") {
-        setDraftPhase((p) => (p === "pending" ? "error" : p));
-        setDraftError(msg);
-      }
-      toast.error("Chưa tạo được chiến dịch", msg);
-    } finally {
-      setRunning(false);
+      toast.error("Chưa tạo được chiến dịch", (e as Error).message);
     }
   };
 
-  const steps: TxStepView[] = [
-    { label: "Máy chủ soạn nháp (băm câu mẫu & điều khoản, quy đổi VNĐ → USDC)", phase: draftPhase, error: draftError },
-    ...(hasSeed ? [{ label: "Cho phép hợp đồng nhận quỹ mồi", phase: approveTx.state.phase, hash: approveTx.state.hash, error: approveTx.state.error }] : []),
-    { label: "Ký giao dịch tạo chiến dịch", phase: createTx.state.phase, hash: createTx.state.hash, error: createTx.state.error },
-    { label: "Đồng bộ metadata với chiến dịch on-chain", phase: syncPhase },
-  ];
+  const faucet = async () => {
+    if (!w.address) return;
+    setFauceting(true);
+    try {
+      const r = await publicApi.faucet(w.address);
+      await balance.refetch();
+      toast.success("Đã nhận mUSDC thử nghiệm", r.minted.display);
+    } catch (e) {
+      toast.error("Không nhận được mUSDC", describeChainError(e));
+    } finally {
+      setFauceting(false);
+    }
+  };
+
+  const steps = flow.steps({
+    quote: "Máy chủ soạn nháp và báo giá (băm câu mẫu & điều khoản, quy đổi VNĐ → USDC)",
+    permit: "Ký cho phép trừ quỹ mồi + phí xử lý (miễn phí)",
+    sign: "Ký tạo chiến dịch (miễn phí)",
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -262,9 +315,32 @@ function Review({ f, prompts, num }: { f: Form; prompts: string[]; num: (s: stri
           ))}
         </div>
       </div>
+      <dl className="grid grid-cols-2 gap-3 rounded-2xl border border-line p-4 text-sm" aria-label="Hóa đơn tạo chiến dịch">
+        {seedVnd > 0 && (
+          <>
+            <dt className="text-ink-muted">Quỹ mồi chuyển vào hợp đồng</dt>
+            <dd className="text-right font-semibold tabular">≈ {formatVnd(seedVnd)}</dd>
+          </>
+        )}
+        <dt className="text-ink-muted">
+          Phí xử lý
+        </dt>
+        <dd className="text-right font-semibold tabular">{fees.data?.create.display ?? "…"}</dd>
+        <dt className="border-t border-line pt-3 font-semibold text-ink">Tổng trừ từ ví</dt>
+        <dd className="border-t border-line pt-3 text-right font-bold tabular">{totalVnd !== undefined ? `≈ ${formatVnd(totalVnd)}` : "…"}</dd>
+        <dt className="text-ink-muted">Số dư ví hiện có</dt>
+        <dd className="text-right tabular">{wallet?.display ?? "…"}</dd>
+      </dl>
+      {short && (
+        <div role="alert" className="flex flex-col gap-2 rounded-xl bg-warning-soft p-3 text-sm text-warning-ink sm:flex-row sm:items-center sm:justify-between">
+          <span>Ví chưa đủ tiền cho quỹ mồi + phí xử lý.</span>
+          {network.allowFaucet && (
+            <Button size="sm" variant="secondary" loading={fauceting} onClick={faucet}>Nhận 2.000 mUSDC thử nghiệm</Button>
+          )}
+        </div>
+      )}
       <TxSteps steps={steps} />
-      <Button size="lg" onClick={submit} loading={running} disabled={running || syncPhase === "success"}>Ký & tạo chiến dịch</Button>
-      <p className="text-caption">Bạn tự trả phí mạng (AVAX) cho giao dịch tạo chiến dịch. Giá được lưu bằng USDC theo tỷ giá lúc tạo.</p>
+      <Button size="lg" onClick={submit} loading={flow.running} disabled={flow.running || done || short}>Ký & tạo chiến dịch</Button>
     </div>
   );
 }

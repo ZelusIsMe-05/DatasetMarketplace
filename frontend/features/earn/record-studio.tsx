@@ -293,7 +293,7 @@ function Checking({ text }: { text: string }) {
         <ul className="text-left text-sm text-ink-muted">
           <li>• Độ dài và giọng nói trong bản ghi</li>
           <li>• So khớp từng chữ với câu mẫu</li>
-          <li>• Ghi nhận trên Avalanche nếu đạt</li>
+          <li>• Ghi nhận nếu đạt</li>
         </ul>
       </div>
     </>
@@ -312,9 +312,9 @@ function ResultView({ result, prompt, onNext, campaignId }: { result: Contributi
         {ok ? "✓" : gray ? "…" : "↺"}
       </motion.span>
       <div>
-        <h2 className="text-h2">{ok ? "Tuyệt vời! Bản ghi đã được ghi nhận" : gray ? "Bản ghi đang chờ người duyệt" : "Bản ghi chưa đạt"}</h2>
+        <h2 className="text-h2">{ok ? "Tuyệt vời! Bản ghi đã được ghi nhận" : gray ? "Bản ghi đang chờ chủ chiến dịch duyệt" : "Bản ghi chưa đạt"}</h2>
         <p className="mt-2 text-ink-muted">
-          {ok ? `+${result.weight_sec} giây hợp lệ của bạn đã lên Avalanche.` : gray ? "Máy chưa chắc chắn — một người duyệt sẽ nghe lại. Bạn không cần làm gì thêm." : friendlyQcReason(qc?.reasons ?? [result.message])}
+          {ok ? `+${result.weight_sec} giây hợp lệ của bạn đã được ghi nhận.` : gray ? "Máy chưa chắc chắn — chủ chiến dịch sẽ nghe lại và duyệt. Bạn không cần làm gì thêm." : friendlyQcReason(qc?.reasons ?? [result.message])}
         </p>
       </div>
       {qc && qc.word_scores.length > 0 && (

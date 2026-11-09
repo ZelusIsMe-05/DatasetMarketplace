@@ -3,6 +3,16 @@ const nf = new Intl.NumberFormat("vi-VN");
 
 export const formatNumber = (n: number) => nf.format(n);
 
+/**
+ * Đọc số người dùng gõ theo kiểu Việt Nam: "26.000.000" (dấu chấm phân cách hàng nghìn), "0,5" hoặc "0.5" (thập phân),
+ * "1.234,5". Dấu chấm chỉ được hiểu là phân cách nghìn khi đi theo nhóm đúng 3 chữ số.
+ */
+export function parseViNumber(s: string): number {
+  const t = s.replace(/\s/g, "");
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(t)) return Number(t.replace(/\./g, "").replace(",", "."));
+  return Number(t.replace(",", "."));
+}
+
 export function formatPercentBps(bps: number, digits = 1): string {
   return `${(bps / 100).toLocaleString("vi-VN", { maximumFractionDigits: digits })}%`;
 }

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import hmac
 from typing import Annotated
 
-from fastapi import Depends, Header, Request
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.core.errors import Forbidden, Unauthorized
+from app.core.errors import Unauthorized
 from app.core.security import TokenError, verify_session
 from app.models import User
 from app.services.container import Container
@@ -33,17 +32,9 @@ def get_current_user(
     with c.sf() as s:
         user = s.get(User, int(claims["sub"]))
         if user is None or user.wallet_address != claims.get("addr"):
-            raise Unauthorized("Tài khoản không tồn tại")
+            raise Unauthorized("Phiên đăng nhập không còn hợp lệ (dữ liệu máy chủ đã được làm mới) — hãy đăng nhập lại")
         s.expunge(user)
         return user
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
-
-
-def require_admin(c: ContainerDep, x_admin_key: Annotated[str | None, Header()] = None) -> None:
-    key = c.settings.admin_api_key
-    if not key:
-        raise Forbidden("ADMIN_API_KEY chưa được cấu hình")
-    if not x_admin_key or not hmac.compare_digest(x_admin_key, key):
-        raise Forbidden("Sai admin key (header X-Admin-Key)")

@@ -18,10 +18,12 @@ from starlette.requests import Request
 
 from app.api.routes_campaigns import router as campaigns_router
 from app.api.routes_contributor import router as contributor_router
-from app.api.routes_datasets import admin_router, demo_router
+from app.api.routes_creator import router as creator_router
+from app.api.routes_datasets import demo_router
 from app.api.routes_datasets import router as datasets_router
 from app.api.routes_public import dev_router
 from app.api.routes_public import router as public_router
+from app.api.routes_sponsor import router as sponsor_router
 from app.core.config import Settings, get_settings
 from app.core.errors import install_handlers
 from app.core.logging import setup_logging
@@ -29,7 +31,7 @@ from app.core.ratelimit import LIMITS, limiter
 from app.qc.service import QcService
 from app.services.container import Container, build_container
 
-log = logging.getLogger("giongque.main")
+log = logging.getLogger("datasetmarketplace.main")
 
 
 async def _indexer_loop(c: Container) -> None:
@@ -37,8 +39,12 @@ async def _indexer_loop(c: Container) -> None:
         await asyncio.sleep(c.settings.indexer_interval_sec)
         try:
             await asyncio.to_thread(c.indexer.sync)
+            # Không có vai trò quản trị (§3 #28): quá hạn chủ chiến dịch chưa duyệt ⇒ tự duyệt; giao dịch ghi nhận lỗi
+            # tạm thời ⇒ tự thử lại.
+            await asyncio.to_thread(c.review.auto_approve_overdue)
+            await asyncio.to_thread(c.review.retry_pending_chain)
         except Exception as e:  # noqa: BLE001 - RPC chập chờn không được làm sập server
-            log.warning("indexer sync lỗi: %s", type(e).__name__)
+            log.warning("vòng nền (indexer / duyệt) lỗi: %s", type(e).__name__)
 
 
 def create_app(
@@ -88,15 +94,16 @@ def create_app(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST"],
-        allow_headers=["Authorization", "Content-Type", "X-Admin-Key"],
+        allow_methods=["GET", "POST", "PATCH"],
+        allow_headers=["Authorization", "Content-Type"],
     )
 
     app.include_router(public_router)
     app.include_router(campaigns_router)
+    app.include_router(sponsor_router)
     app.include_router(contributor_router)
     app.include_router(datasets_router)
-    app.include_router(admin_router)
+    app.include_router(creator_router)
     if settings.network.allow_faucet_button:
         app.include_router(demo_router)  # mainnet: không mount => 404
     if settings.dev_mode:

@@ -19,7 +19,7 @@ from web3._utils.events import get_event_data
 from app.blockchain.client import ChainClient
 from app.models import Campaign, Claim, Consent, KvState, OnchainContribution, Purchase
 
-log = logging.getLogger("giongque.indexer")
+log = logging.getLogger("datasetmarketplace.indexer")
 
 STATE_KEY = "indexer.last_block"
 

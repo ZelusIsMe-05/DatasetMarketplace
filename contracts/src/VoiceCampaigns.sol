@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
@@ -13,7 +14,12 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 /// @notice Bám sát mục 9.2 của tài liệu đề xuất. Các thay đổi nhỏ so với bản gốc (xem docs/implementation-plan.md):
 ///         (1) progressBps trả 0 cho chiến dịch không tồn tại thay vì panic chia cho 0;
 ///         (2) publishSnapshot kiểm tra campaignId hợp lệ;
-///         (3) thêm sự kiện Withdrawn / SeedWithdrawn để backend lập chỉ mục doanh thu.
+///         (3) thêm sự kiện Withdrawn / SeedWithdrawn để backend lập chỉ mục doanh thu;
+///         (4) nền tảng trả phí mạng cho MỌI vai trò: tạo chiến dịch, mua, rút doanh thu, rút quỹ mồi có bản "WithSig"
+///             (người dùng chỉ ký, relayer gửi). Phí xử lý do backend báo giá, người dùng ký ĐÚNG số phí đó, hợp đồng
+///             trừ trong cùng giao dịch cho feeCollector. Token được cấp quyền bằng chữ ký EIP-2612 (permit);
+///         (5) phiên bản dataset thuộc quyền CHỦ CHIẾN DỊCH: chỉ người tạo được công bố (tự gọi hoặc ký PublishSnapshot
+///             để relayer gửi hộ); ví nền tảng (QC oracle) chỉ ghi nhận bản ghi, không công bố dữ liệu.
 contract VoiceCampaigns is Ownable, EIP712, Nonces, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -29,6 +35,47 @@ contract VoiceCampaigns is Ownable, EIP712, Nonces, ReentrancyGuard {
     bytes32 private constant CLAIM_TYPEHASH = keccak256(
         "Claim(uint256 campaignId,address contributor,uint256 maxFee,uint256 nonce,uint256 deadline)"
     );
+    // Giao dịch được nền tảng trả phí mạng (người dùng ký đúng số phí xử lý `fee`).
+    bytes32 private constant CREATE_TYPEHASH = keccak256(
+        "CreateCampaign(address creator,uint64 targetSec,uint128 fullPrice,uint16 contributorBps,uint16 creatorBps,"
+        "uint64 campaignDeadline,bytes32 promptSetHash,bytes32 termsHash,string metadataURI,uint256 seedRatePerSec,"
+        "uint256 seedAmount,uint256 fee,uint256 nonce,uint256 deadline)"
+    );
+    bytes32 private constant BUY_TYPEHASH = keccak256(
+        "Buy(uint256 campaignId,address buyer,uint256 maxPrice,uint256 fee,uint256 nonce,uint256 deadline)"
+    );
+    bytes32 private constant WITHDRAW_TYPEHASH =
+        keccak256("Withdraw(address account,uint256 fee,uint256 nonce,uint256 deadline)");
+    bytes32 private constant WITHDRAW_SEED_TYPEHASH = keccak256(
+        "WithdrawSeed(uint256 campaignId,address creator,uint256 fee,uint256 nonce,uint256 deadline)"
+    );
+    // Chủ chiến dịch đồng ý công bố đúng phiên bản này (mã Merkle + đường dẫn manifest).
+    bytes32 private constant PUBLISH_TYPEHASH = keccak256(
+        "PublishSnapshot(uint256 campaignId,bytes32 merkleRoot,string uri,uint256 nonce,uint256 deadline)"
+    );
+
+    /// @notice Tham số chiến dịch, gom thành struct cho bản có chữ ký (tránh "stack too deep").
+    struct CampaignParams {
+        uint64 targetSec;
+        uint128 fullPrice;
+        uint16 contributorBps;
+        uint16 creatorBps;
+        uint64 deadline; // hạn thu thập của chiến dịch
+        bytes32 promptSetHash;
+        bytes32 termsHash;
+        string metadataURI;
+        uint256 seedRatePerSec;
+        uint256 seedAmount;
+    }
+
+    /// @notice Chữ ký EIP-2612 cho phép hợp đồng trừ token. value = 0: bỏ qua, dùng allowance sẵn có.
+    struct PermitSig {
+        uint256 value;
+        uint256 deadline;
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+    }
 
     struct Campaign {
         address creator;
@@ -104,6 +151,8 @@ contract VoiceCampaigns is Ownable, EIP712, Nonces, ReentrancyGuard {
     event QcOracleUpdated(address qcOracle);
     event Withdrawn(address indexed account, uint256 amount);
     event SeedWithdrawn(uint256 indexed campaignId, address indexed creator, uint256 amount);
+    /// @notice Phí xử lý của giao dịch được nền tảng trả phí mạng; action = selector hàm WithSig.
+    event RelayFeePaid(address indexed payer, bytes4 indexed action, uint256 fee);
 
     error NotQcOracle();
     error InvalidParams();
@@ -128,7 +177,7 @@ contract VoiceCampaigns is Ownable, EIP712, Nonces, ReentrancyGuard {
         _;
     }
 
-    constructor(address token_, address qcOracle_, address owner_) Ownable(owner_) EIP712("GiongQue", "1") {
+    constructor(address token_, address qcOracle_, address owner_) Ownable(owner_) EIP712("DatasetMarketplace", "1") {
         token = IERC20(token_);
         qcOracle = qcOracle_;
         feeCollector = owner_;
@@ -148,26 +197,90 @@ contract VoiceCampaigns is Ownable, EIP712, Nonces, ReentrancyGuard {
         uint256 seedRatePerSec,
         uint256 seedAmount
     ) external returns (uint256 id) {
-        if (targetSec == 0 || fullPrice == 0 || deadline <= block.timestamp) revert InvalidParams();
-        if (uint256(contributorBps) + creatorBps > BPS) revert InvalidParams();
+        id = _createCampaign(
+            msg.sender,
+            CampaignParams({
+                targetSec: targetSec,
+                fullPrice: fullPrice,
+                contributorBps: contributorBps,
+                creatorBps: creatorBps,
+                deadline: deadline,
+                promptSetHash: promptSetHash,
+                termsHash: termsHash,
+                metadataURI: metadataURI,
+                seedRatePerSec: seedRatePerSec,
+                seedAmount: seedAmount
+            }),
+            0
+        );
+    }
+
+    /// @notice Người tạo chỉ ký (chiến dịch + phí xử lý, và permit nếu cần); relayer gửi và trả phí mạng.
+    ///         Hợp đồng trừ quỹ mồi + phí từ ví người tạo trong cùng giao dịch.
+    function createCampaignWithSig(
+        CampaignParams calldata p,
+        address creator,
+        uint256 fee,
+        uint256 deadline,
+        bytes calldata sig,
+        PermitSig calldata permit
+    ) external nonReentrant returns (uint256 id) {
+        if (block.timestamp > deadline) revert Expired();
+        bytes32 structHash = _createStructHash(p, creator, fee, _useNonce(creator), deadline);
+        if (ECDSA.recover(_hashTypedDataV4(structHash), sig) != creator) revert BadSignature();
+        _permit(creator, permit);
+        id = _createCampaign(creator, p, fee);
+    }
+
+    function _createCampaign(address creator, CampaignParams memory p, uint256 fee) internal returns (uint256 id) {
+        if (p.targetSec == 0 || p.fullPrice == 0 || p.deadline <= block.timestamp) revert InvalidParams();
+        if (uint256(p.contributorBps) + p.creatorBps > BPS) revert InvalidParams();
 
         id = campaignCount++;
         Campaign storage c = campaigns[id];
-        c.creator = msg.sender;
-        c.deadline = deadline;
-        c.targetSec = targetSec;
-        c.fullPrice = fullPrice;
-        c.contributorBps = contributorBps;
-        c.creatorBps = creatorBps;
-        c.promptSetHash = promptSetHash;
-        c.termsHash = termsHash;
-        c.metadataURI = metadataURI;
-        c.seedRatePerSec = seedRatePerSec;
-        if (seedAmount > 0) {
-            c.seedBalance = seedAmount;
-            token.safeTransferFrom(msg.sender, address(this), seedAmount);
-        }
-        emit CampaignCreated(id, msg.sender, targetSec, fullPrice, deadline);
+        c.creator = creator;
+        c.deadline = p.deadline;
+        c.targetSec = p.targetSec;
+        c.fullPrice = p.fullPrice;
+        c.contributorBps = p.contributorBps;
+        c.creatorBps = p.creatorBps;
+        c.promptSetHash = p.promptSetHash;
+        c.termsHash = p.termsHash;
+        c.metadataURI = p.metadataURI;
+        c.seedRatePerSec = p.seedRatePerSec;
+        c.seedBalance = p.seedAmount;
+        _chargeFee(creator, fee);
+        uint256 pull = p.seedAmount + fee;
+        if (pull > 0) token.safeTransferFrom(creator, address(this), pull);
+        emit CampaignCreated(id, creator, p.targetSec, p.fullPrice, p.deadline);
+    }
+
+    /// @dev Mã hóa EIP-712 tách hai nửa: abi.encode các giá trị tĩnh chỉ là nối các word 32 byte,
+    ///      nên bytes.concat(abi.encode(a..g), abi.encode(h..n)) == abi.encode(a..n) mà không "stack too deep".
+    function _createStructHash(
+        CampaignParams calldata p,
+        address creator,
+        uint256 fee,
+        uint256 nonce,
+        uint256 deadline
+    ) private pure returns (bytes32) {
+        return keccak256(
+            bytes.concat(
+                abi.encode(
+                    CREATE_TYPEHASH, creator, p.targetSec, p.fullPrice, p.contributorBps, p.creatorBps, p.deadline
+                ),
+                abi.encode(
+                    p.promptSetHash,
+                    p.termsHash,
+                    keccak256(bytes(p.metadataURI)),
+                    p.seedRatePerSec,
+                    p.seedAmount,
+                    fee,
+                    nonce,
+                    deadline
+                )
+            )
+        );
     }
 
     function isCollecting(uint256 campaignId) public view returns (bool) {
@@ -291,14 +404,35 @@ contract VoiceCampaigns is Ownable, EIP712, Nonces, ReentrancyGuard {
     // ------------------------------------------------------------------ mua và chia doanh thu
 
     function buy(uint256 campaignId, uint256 maxPrice) external nonReentrant {
+        _buy(campaignId, msg.sender, maxPrice, 0);
+    }
+
+    /// @notice Người mua chỉ ký (Buy + permit nếu cần); relayer gửi và trả phí mạng.
+    ///         Hợp đồng trừ giá + phí xử lý từ ví người mua; phí KHÔNG tính vào doanh thu chia cho các bên.
+    function buyWithSig(
+        uint256 campaignId,
+        address buyer,
+        uint256 maxPrice,
+        uint256 fee,
+        uint256 deadline,
+        bytes calldata sig,
+        PermitSig calldata permit
+    ) external nonReentrant {
+        if (block.timestamp > deadline) revert Expired();
+        bytes32 structHash =
+            keccak256(abi.encode(BUY_TYPEHASH, campaignId, buyer, maxPrice, fee, _useNonce(buyer), deadline));
+        if (ECDSA.recover(_hashTypedDataV4(structHash), sig) != buyer) revert BadSignature();
+        _permit(buyer, permit);
+        _buy(campaignId, buyer, maxPrice, fee);
+    }
+
+    function _buy(uint256 campaignId, address buyer, uint256 maxPrice, uint256 fee) internal {
         Campaign storage c = campaigns[campaignId];
         if (c.totalWeight == 0) revert NothingToSell();
-        if (licenses[campaignId][msg.sender].purchasedAt != 0) revert AlreadyLicensed();
+        if (licenses[campaignId][buyer].purchasedAt != 0) revert AlreadyLicensed();
         uint256 price = currentPrice(campaignId);
         if (price > maxPrice) revert PriceTooHigh();
         uint16 p = progressBps(campaignId);
-
-        token.safeTransferFrom(msg.sender, address(this), price);
 
         uint256 contributorShare = price * c.contributorBps / BPS;
         uint256 creatorShare = price * c.creatorBps / BPS;
@@ -314,10 +448,12 @@ contract VoiceCampaigns is Ownable, EIP712, Nonces, ReentrancyGuard {
         uint256 platformShare = price - creatorShare - distributed;
         withdrawable[c.creator] += creatorShare;
         withdrawable[owner()] += platformShare;
+        _chargeFee(buyer, fee);
 
-        licenses[campaignId][msg.sender] =
+        licenses[campaignId][buyer] =
             License({purchasedAt: uint64(block.timestamp), progressBpsAtPurchase: p, pricePaid: uint128(price)});
-        emit Purchased(campaignId, msg.sender, price, p);
+        token.safeTransferFrom(buyer, address(this), price + fee);
+        emit Purchased(campaignId, buyer, price, p);
     }
 
     function pendingReward(uint256 campaignId, address contributor) external view returns (uint256) {
@@ -367,6 +503,22 @@ contract VoiceCampaigns is Ownable, EIP712, Nonces, ReentrancyGuard {
         }
     }
 
+    /// @notice Người tạo / nền tảng rút phần doanh thu qua relayer: chỉ ký, phí xử lý trừ vào số tiền rút.
+    function withdrawWithSig(address account, uint256 fee, uint256 deadline, bytes calldata sig)
+        external
+        nonReentrant
+    {
+        if (block.timestamp > deadline) revert Expired();
+        bytes32 structHash = keccak256(abi.encode(WITHDRAW_TYPEHASH, account, fee, _useNonce(account), deadline));
+        if (ECDSA.recover(_hashTypedDataV4(structHash), sig) != account) revert BadSignature();
+        uint256 amount = withdrawable[account];
+        if (amount == 0 || amount <= fee) revert NothingToClaim();
+        withdrawable[account] = 0;
+        _chargeFee(account, fee);
+        token.safeTransfer(account, amount - fee);
+        emit Withdrawn(account, amount - fee);
+    }
+
     function withdrawSeed(uint256 campaignId) external nonReentrant {
         Campaign storage c = campaigns[campaignId];
         if (msg.sender != c.creator) revert NotCreator();
@@ -379,10 +531,53 @@ contract VoiceCampaigns is Ownable, EIP712, Nonces, ReentrancyGuard {
         }
     }
 
+    /// @notice Người tạo rút quỹ mồi còn dư (sau hạn) qua relayer: chỉ ký, phí xử lý trừ vào số tiền rút.
+    function withdrawSeedWithSig(uint256 campaignId, uint256 fee, uint256 deadline, bytes calldata sig)
+        external
+        nonReentrant
+    {
+        if (block.timestamp > deadline) revert Expired();
+        Campaign storage c = campaigns[campaignId];
+        address creator = c.creator;
+        bytes32 structHash =
+            keccak256(abi.encode(WITHDRAW_SEED_TYPEHASH, campaignId, creator, fee, _useNonce(creator), deadline));
+        if (creator == address(0) || ECDSA.recover(_hashTypedDataV4(structHash), sig) != creator) {
+            revert BadSignature();
+        }
+        if (block.timestamp < c.deadline) revert TooEarly();
+        uint256 amount = c.seedBalance;
+        if (amount == 0 || amount <= fee) revert NothingToClaim();
+        c.seedBalance = 0;
+        _chargeFee(creator, fee);
+        token.safeTransfer(creator, amount - fee);
+        emit SeedWithdrawn(campaignId, creator, amount - fee);
+    }
+
     // ------------------------------------------------------------------ phiên bản dataset, quản trị
 
-    function publishSnapshot(uint256 campaignId, bytes32 merkleRoot, string calldata uri) external onlyQc {
+    /// @notice Chủ chiến dịch tự công bố một phiên bản dataset (tự trả gas).
+    function publishSnapshot(uint256 campaignId, bytes32 merkleRoot, string calldata uri) external {
         if (campaignId >= campaignCount) revert InvalidParams();
+        if (msg.sender != campaigns[campaignId].creator) revert NotCreator();
+        emit SnapshotPublished(campaignId, merkleRoot, uri);
+    }
+
+    /// @notice Chủ chiến dịch chỉ ký PublishSnapshot(campaignId, merkleRoot, uri); relayer gửi và trả phí mạng.
+    ///         Không có chữ ký của chủ chiến dịch thì không ai công bố được phiên bản của chiến dịch đó.
+    function publishSnapshotWithSig(
+        uint256 campaignId,
+        bytes32 merkleRoot,
+        string calldata uri,
+        uint256 deadline,
+        bytes calldata sig
+    ) external {
+        if (block.timestamp > deadline) revert Expired();
+        if (campaignId >= campaignCount) revert InvalidParams();
+        address creator = campaigns[campaignId].creator;
+        bytes32 structHash = keccak256(
+            abi.encode(PUBLISH_TYPEHASH, campaignId, merkleRoot, keccak256(bytes(uri)), _useNonce(creator), deadline)
+        );
+        if (ECDSA.recover(_hashTypedDataV4(structHash), sig) != creator) revert BadSignature();
         emit SnapshotPublished(campaignId, merkleRoot, uri);
     }
 
@@ -412,5 +607,19 @@ contract VoiceCampaigns is Ownable, EIP712, Nonces, ReentrancyGuard {
         uint256 accrued = a.weight * c.accPerWeight / ACC;
         a.pending += accrued - a.rewardDebt;
         a.rewardDebt = accrued;
+    }
+
+    /// @dev Ghi phí xử lý cho feeCollector (relayer dùng nó bù phí mạng AVAX). Gọi TRƯỚC khi chuyển token (CEI).
+    function _chargeFee(address payer, uint256 fee) private {
+        if (fee == 0) return;
+        withdrawable[feeCollector] += fee;
+        emit RelayFeePaid(payer, msg.sig, fee);
+    }
+
+    /// @dev permit trong try/catch: nếu ai đó đã gửi trước đúng chữ ký permit này (front-run), allowance đã được
+    ///      cấp nên giao dịch vẫn chạy; nếu permit sai thật, safeTransferFrom phía sau sẽ revert.
+    function _permit(address holder, PermitSig calldata p) private {
+        if (p.value == 0) return;
+        try IERC20Permit(address(token)).permit(holder, address(this), p.value, p.deadline, p.v, p.r, p.s) {} catch {}
     }
 }

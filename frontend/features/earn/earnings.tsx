@@ -1,9 +1,10 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState } from "react";
 import type { Address } from "viem";
-import { signTyped } from "@/lib/browserWallet";
+import { describeChainError } from "@/lib/chainErrors";
 import { formatDuration, formatNumber } from "@/lib/format";
 import { moneyFromUnits } from "@/lib/money";
 import { qk, useCampaigns, useFx } from "@/hooks/queries";
@@ -19,6 +20,7 @@ import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { TxSteps, type TxStepView } from "@/components/tx/tx-steps";
 import { campaignName } from "@/features/marketplace/labels";
 import { useMyContributions } from "@/features/earn/use-earn";
+import { useBackedUpAt } from "@/features/earn/wallet-backup";
 
 export function Earnings() {
   const c = useContributor();
@@ -44,7 +46,6 @@ export function Earnings() {
         <Card tone="soft">
           <p className="text-caption">Tổng tiền chưa rút</p>
           <div className="mt-1 text-3xl font-bold tracking-tight">{mine.data ? <AnimatedNumber value={mine.data.total_pending.vnd} format={(n) => `≈ ${formatNumber(Math.round(n))} ₫`} /> : <Skeleton className="h-9 w-48" />}</div>
-          <p className="text-xs text-ink-muted">{mine.data?.total_pending.token}</p>
         </Card>
         <Card>
           <p className="text-caption">Đã về ví của bạn (on-chain)</p>
@@ -81,6 +82,7 @@ function ClaimDialog({ campaignId, onClose, onDone }: { campaignId: number | nul
   const qc = useQueryClient();
   const toast = useToast();
   const [steps, setSteps] = useState<TxStepView[] | null>(null);
+  const backed = useBackedUpAt(c.address);
   const quote = useQuery({
     queryKey: ["claim-quote", campaignId, c.address],
     queryFn: () => c.api!.claimQuote(campaignId!),
@@ -96,14 +98,14 @@ function ClaimDialog({ campaignId, onClose, onDone }: { campaignId: number | nul
   };
 
   const claim = async () => {
-    if (campaignId === null || !c.api || !c.account) return;
+    if (campaignId === null || !c.api || !c.signer) return;
     const set = (a: TxStepView["phase"], b: TxStepView["phase"], extra: Partial<TxStepView> = {}) =>
-      setSteps([{ label: "Ký yêu cầu rút (chấp nhận phí tối đa)", phase: a }, { label: "Nền tảng gửi giao dịch rút tiền", phase: b, note: "Phí mạng AVAX do nền tảng trả", ...extra }]);
+      setSteps([{ label: "Ký yêu cầu rút (chấp nhận phí tối đa)", phase: a }, { label: "Chuyển tiền về ví", phase: b, ...extra }]);
     try {
       set("signing", "waiting");
       const fresh = await c.api.claimQuote(campaignId); // lấy nonce/deadline mới nhất
       if (!fresh.can_claim || !fresh.sign) throw new Error(fresh.reason ?? "Không có tiền để rút");
-      const sig = await signTyped(c.account, fresh.sign);
+      const sig = await c.signer.signTypedData(fresh.sign);
       set("success", "pending");
       const res = await c.api.claim(campaignId, Number(fresh.sign.typed_data.message.maxFee), fresh.sign.deadline, sig);
       set("success", "success", { hash: res.tx_hash, note: `Đã nhận ${res.received.display}` });
@@ -111,7 +113,7 @@ function ClaimDialog({ campaignId, onClose, onDone }: { campaignId: number | nul
       onDone();
       toast.success("Đã rút tiền về ví", `${res.received.display} (phí ${res.fee.display})`);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Lỗi";
+      const msg = describeChainError(e);
       setSteps((s) => s?.map((x) => (x.phase === "signing" || x.phase === "pending" ? { ...x, phase: "error", error: msg } : x)) ?? null);
     }
   };
@@ -143,6 +145,12 @@ function ClaimDialog({ campaignId, onClose, onDone }: { campaignId: number | nul
           </dl>
           {!q.can_claim && <p className="text-sm text-warning-ink">{q.reason}</p>}
           <p className="text-caption">Phí được ký kèm mức tối đa nên không thể bị tăng sau khi bạn ký. Số tiền có thể chênh vài đồng do làm tròn.</p>
+          {c.kind === "browser" && !backed && (
+            <p className="rounded-xl bg-peach-soft p-3 text-sm text-peach-ink">
+              Ví trình duyệt của bạn <b>chưa được sao lưu</b>: tiền rút về nằm trong ví này, xóa dữ liệu trình duyệt là mất ví. Hãy{" "}
+              <Link href="/earn" className="font-semibold underline">tải file sao lưu</Link> ở trang Tổng quan.
+            </p>
+          )}
           {steps && <TxSteps steps={steps} />}
         </div>
       )}

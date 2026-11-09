@@ -6,7 +6,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-log = logging.getLogger("giongque.errors")
+log = logging.getLogger("datasetmarketplace.errors")
 
 
 class AppError(Exception):

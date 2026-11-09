@@ -11,6 +11,7 @@ import { AnimatedNumber, Reveal } from "@/components/ui/misc";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { DatasetCard } from "@/features/marketplace/dataset-card";
 import { useMyContributions } from "@/features/earn/use-earn";
+import { WalletBackupCard } from "@/features/earn/wallet-backup";
 
 export function EarnDashboard() {
   const c = useContributor();
@@ -36,7 +37,6 @@ export function EarnDashboard() {
             <div className="relative mt-1 text-4xl font-bold tracking-tight sm:text-5xl">
               {mine.data ? <AnimatedNumber value={mine.data.total_pending.vnd} format={(n) => `≈ ${formatNumber(Math.round(n))} ₫`} /> : <Skeleton className="h-12 w-56 bg-white/20" />}
             </div>
-            <p className="relative mt-1 text-sm text-[#bfdbfe]">{mine.data?.total_pending.token}</p>
             <div className="relative mt-7 flex flex-wrap gap-3">
               <ButtonLink href="/earn/campaigns" variant="secondary" className="!bg-white !text-primary-active hover:!bg-primary-soft">Ghi âm ngay</ButtonLink>
               <ButtonLink href="/earn/earnings" variant="ghost" className="!text-white hover:!bg-white/10">Rút tiền →</ButtonLink>
@@ -59,6 +59,8 @@ export function EarnDashboard() {
           ))}
         </div>
       </div>
+
+      <WalletBackupCard />
 
       <section aria-labelledby="recent">
         <div className="flex items-center justify-between">

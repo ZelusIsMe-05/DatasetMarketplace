@@ -7,6 +7,7 @@ import { publicApi } from "@/services/api";
 export const qk = {
   health: ["health"] as const,
   fx: ["fx"] as const,
+  fees: ["fees"] as const,
   campaigns: ["campaigns"] as const,
   campaign: (id: number) => ["campaign", id] as const,
   price: (id: number) => ["price", id] as const,
@@ -19,6 +20,8 @@ export const qk = {
 
 export const useHealth = () => useQuery({ queryKey: qk.health, queryFn: publicApi.health, staleTime: 30_000 });
 export const useFx = () => useQuery({ queryKey: qk.fx, queryFn: publicApi.fx, staleTime: 60_000 });
+/** Bảng phí xử lý (đã gồm phí mạng nền tảng trả hộ) để hiện trên hóa đơn trước khi ký. */
+export const useFees = () => useQuery({ queryKey: qk.fees, queryFn: publicApi.fees, staleTime: 60_000 });
 export const useCampaigns = () => useQuery({ queryKey: qk.campaigns, queryFn: publicApi.campaigns, refetchInterval: 15_000 });
 export const useCampaign = (id: number) => useQuery({ queryKey: qk.campaign(id), queryFn: () => publicApi.campaign(id), refetchInterval: 15_000 });
 export const usePrice = (id: number) => useQuery({ queryKey: qk.price(id), queryFn: () => publicApi.price(id), refetchInterval: 10_000 });

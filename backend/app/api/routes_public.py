@@ -9,7 +9,8 @@ from pydantic import BaseModel
 from app.api.deps import ContainerDep, CurrentUser
 from app.core import ratelimit
 from app.core.ratelimit import limiter
-from app.schemas.auth import ChallengeResponse, DevLoginRequest, GoogleLoginRequest, MeResponse, SessionResponse
+from app.schemas.auth import ChallengeResponse, DevLoginRequest, GoogleLoginRequest, MeResponse, ProfileUpdate, SessionResponse
+from app.services.auth_service import me_response
 
 router = APIRouter()
 
@@ -30,6 +31,7 @@ class HealthResponse(BaseModel):
     qc_load_error: str | None
     dev_mode: bool
     data_dir: str
+    storage: str  # "local" hoặc "b2:<bucket>/<tiền tố>" (Backblaze B2)
 
 
 class FxResponse(BaseModel):
@@ -70,6 +72,7 @@ def health(c: ContainerDep) -> HealthResponse:
         qc_load_error=c.qc.load_error,
         dev_mode=c.settings.dev_mode,
         data_dir=str(c.data_dir),
+        storage=c.storage.describe(),
     )
 
 
@@ -93,15 +96,22 @@ def auth_challenge(request: Request, c: ContainerDep, address: Annotated[str, Qu
 @router.post("/auth/google", tags=["auth"])
 @limiter.limit(ratelimit.AUTH)
 def auth_google(request: Request, c: ContainerDep, body: GoogleLoginRequest) -> SessionResponse:
-    """Đăng nhập Google, gắn email với một địa chỉ ví (mỗi email một ví)."""
+    """Đăng nhập Google. Lần đầu kèm chữ ký ví để gắn email ↔ ví (mỗi email một ví); các lần sau chỉ cần ID token.
+
+    Email chưa gắn ví mà không kèm chữ ký ⇒ 409 `wallet_required`.
+    """
     return c.auth.login_google(body.id_token, body.address, body.nonce, body.signature)
 
 
 @router.get("/auth/me", tags=["auth"])
 def auth_me(user: CurrentUser) -> MeResponse:
-    return MeResponse(
-        user_id=user.id, email=user.email, wallet_address=user.wallet_address, auth_provider=user.auth_provider
-    )
+    return me_response(user)
+
+
+@router.patch("/auth/me", tags=["auth"])
+def auth_update_me(c: ContainerDep, user: CurrentUser, body: ProfileUpdate) -> MeResponse:
+    """Cài đặt tài khoản: tên hiển thị, mẫu ảnh đại diện. Ví liên kết không đổi được."""
+    return c.auth.update_profile(user, body)
 
 
 dev_router = APIRouter(tags=["dev (chỉ local)"])
@@ -110,5 +120,5 @@ dev_router = APIRouter(tags=["dev (chỉ local)"])
 @dev_router.post("/auth/dev-login")
 @limiter.limit(ratelimit.AUTH)
 def auth_dev_login(request: Request, c: ContainerDep, body: DevLoginRequest) -> SessionResponse:
-    """[CHỈ NETWORK=local + DEV_AUTH_ENABLED] Đăng nhập không cần Google, vẫn phải ký chứng minh ví."""
+    """[CHỈ NETWORK=local + DEV_AUTH_ENABLED] Đăng nhập không cần Google; quy tắc ví giống /auth/google."""
     return c.auth.login_dev(body.email, body.address, body.nonce, body.signature)

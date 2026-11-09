@@ -9,6 +9,7 @@ import json
 import os
 import re
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from pathlib import Path
 
@@ -32,17 +33,20 @@ class NetworkProfile:
     allow_mock_token: bool  # được phép dùng MockUSDC (mint tự do)
     allow_faucet_button: bool  # hiện nút "Nhận mUSDC thử" cho người mua demo
     fx_source: str  # "fixed" | "http"
+    # Phiên bản domain EIP-712 của token cho permit (EIP-2612): MockUSDC (OZ ERC20Permit) = "1", USDC của Circle = "2".
+    token_permit_version: str = "1"
 
 
 PROFILES: dict[str, NetworkProfile] = {
-    "local": NetworkProfile("local", 31337, "http://127.0.0.1:8545", "", True, True, "fixed"),
+    # Anvil cổng 8386: chừa 8545 cho Hardhat/Scaffold-ETH của dự án khác (cùng chain id 31337) chạy song song.
+    "local": NetworkProfile("local", 31337, "http://127.0.0.1:8386", "", True, True, "fixed"),
     "fuji": NetworkProfile(
         "fuji", 43113, "https://api.avax-test.network/ext/bc/C/rpc",
         "https://testnet.snowtrace.io", True, True, "fixed",
     ),
     "mainnet": NetworkProfile(
         "mainnet", 43114, "https://api.avax.network/ext/bc/C/rpc",
-        "https://snowtrace.io", False, False, "http",
+        "https://snowtrace.io", False, False, "http", token_permit_version="2",
     ),
 }
 
@@ -73,32 +77,41 @@ class Settings:
     token: str
     token_decimals: int
     deploy_block: int
-    relayer_key: str  # ví trả gas AVAX (relayer)
-    qc_oracle_key: str  # ví QC oracle (mặc định dùng chung với relayer, §8.4)
+    relayer_key: str = field(repr=False)  # ví trả gas AVAX (relayer)
+    qc_oracle_key: str = field(repr=False)  # ví QC oracle (mặc định dùng chung với relayer, §8.4)
     usdc_vnd_rate: float  # chỉ dùng khi fx_source = "fixed"
     fx_url: str | None  # chỉ dùng khi fx_source = "http"
     fx_json_key: str
-    jwt_secret: str
-    token_secret: str  # HMAC cho prompt token / link tải
+    jwt_secret: str = field(repr=False)
+    token_secret: str = field(repr=False)  # HMAC cho prompt token / link tải
     session_ttl_sec: int
     prompt_token_ttl_sec: int
     download_token_ttl_sec: int
     signature_max_age_sec: int
     google_client_id: str | None
     dev_auth_enabled: bool  # chỉ có hiệu lực khi NETWORK=local
-    admin_api_key: str | None
     cors_origins: list[str]
     rate_limit_enabled: bool
     rate_limit_faucet: str
     storage_root: Path
-    database_url: str | None  # None = SQLite trong thư mục dữ liệu của deployment; có = PostgreSQL (vd. Neon)
+    database_url: str | None = field(repr=False)  # None = SQLite trong thư mục dữ liệu của deployment; có = PostgreSQL (vd. Neon)
     database_schema: str | None  # schema PostgreSQL (None = schema mặc định của URL, thường là public)
-    auto_snapshot_on_revoke: bool
+    # Bản ghi vùng xám chờ CHỦ CHIẾN DỊCH duyệt; quá số giờ này chưa duyệt thì tự duyệt (0 = chờ mãi). §3 #28
+    review_auto_approve_hours: float
     indexer_interval_sec: float
     log_chunk_blocks: int
     faucet_max_usdc: int
     max_upload_bytes: int
     api_public_url: str
+    # Phí xử lý (đã gồm phí mạng) cho giao dịch nền tảng trả gas hộ, đơn vị on-chain của token (USDC: 6 số lẻ).
+    # Chế độ hiện tại: phí cố định. Kế hoạch "tiền gas thực tế + % biên" ghi ở docs/implementation-plan.md §3 #25.
+    relay_fee_create: int
+    relay_fee_buy: int
+    relay_fee_withdraw: int
+    # Backblaze B2 (kho audio riêng tư). Đủ cả ba ⇒ lưu audio trên B2; thiếu B2_BUCKET ⇒ lưu trên đĩa. §3 #29
+    b2_key_id: str | None
+    b2_application_key: str | None = field(repr=False)
+    b2_bucket: str | None
     qc: QcSettings = field(default_factory=QcSettings)
 
     @property
@@ -116,6 +129,19 @@ def _env_bool(env: dict[str, str], key: str, default: bool) -> bool:
     if v is None or v == "":
         return default
     return v.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _token_units(env: dict[str, str], key: str, default: str, decimals: int) -> int:
+    """"0,5" / "0.5" USDC -> 500000 đơn vị on-chain. Không nhận số âm hoặc lẻ hơn số chữ số thập phân của token."""
+    raw = (env.get(key) or default).strip().replace(",", ".")
+    try:
+        value = Decimal(raw)
+    except InvalidOperation:
+        raise ValueError(f"{key} phải là số USDC, ví dụ 0.5") from None
+    units = value * (10**decimals)
+    if value < 0 or units != units.to_integral_value():
+        raise ValueError(f"{key} không hợp lệ: {raw} (≥ 0, tối đa {decimals} chữ số thập phân)")
+    return int(units)
 
 
 def _merged_env(network: str, env_file: Path | None) -> dict[str, str]:
@@ -159,6 +185,10 @@ class DbConfig:
     database_url: str | None
     database_schema: str | None
     storage_root: Path
+    # Backblaze B2 (audio): reset phải xóa audio trên B2 cùng lúc với database
+    b2_key_id: str | None = None
+    b2_application_key: str | None = field(default=None, repr=False)
+    b2_bucket: str | None = None
 
     @property
     def is_postgres(self) -> bool:
@@ -177,6 +207,9 @@ def load_db_config(env_file: Path | None = None, overrides: dict[str, str] | Non
         database_url=normalize_database_url(env.get("DATABASE_URL")),
         database_schema=validate_schema(env.get("DATABASE_SCHEMA")),
         storage_root=Path(env.get("STORAGE_DIR") or REPO_DIR / "storage"),
+        b2_key_id=(env.get("B2_KEY_ID") or "").strip() or None,
+        b2_application_key=(env.get("B2_APPLICATION_KEY") or "").strip() or None,
+        b2_bucket=(env.get("B2_BUCKET") or "").strip() or None,
     )
 
 
@@ -247,12 +280,13 @@ def load_settings(env_file: Path | None = None, overrides: dict[str, str] | None
     if qc.weight_source not in {"speech", "duration"}:
         raise ValueError("QC_WEIGHT_SOURCE phải là speech hoặc duration")
 
+    token_decimals = int(env.get("TOKEN_DECIMALS", "6"))
     s = Settings(
         network=net,
         rpc_url=env.get("RPC_URL") or net.rpc_url,
         voice_campaigns=voice_campaigns,
         token=token,
-        token_decimals=int(env.get("TOKEN_DECIMALS", "6")),
+        token_decimals=token_decimals,
         deploy_block=deploy_block,
         relayer_key=relayer_key,
         qc_oracle_key=env.get("QC_ORACLE_PRIVATE_KEY") or relayer_key,
@@ -267,25 +301,33 @@ def load_settings(env_file: Path | None = None, overrides: dict[str, str] | None
         signature_max_age_sec=int(env.get("SIGNATURE_MAX_AGE_SEC", "300")),
         google_client_id=env.get("GOOGLE_CLIENT_ID") or None,
         dev_auth_enabled=dev_auth,
-        admin_api_key=env.get("ADMIN_API_KEY") or None,
         cors_origins=[o.strip() for o in env.get("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",") if o.strip()],
         rate_limit_enabled=_env_bool(env, "RATE_LIMIT_ENABLED", True),
         rate_limit_faucet=env.get("RATE_LIMIT_FAUCET") or ("200/hour" if name == "local" else "5/hour"),
         storage_root=Path(env.get("STORAGE_DIR") or REPO_DIR / "storage"),
         database_url=normalize_database_url(env.get("DATABASE_URL")),
         database_schema=validate_schema(env.get("DATABASE_SCHEMA")),
-        auto_snapshot_on_revoke=_env_bool(env, "AUTO_SNAPSHOT_ON_REVOKE", True),
+        review_auto_approve_hours=float(env.get("REVIEW_AUTO_APPROVE_HOURS", "72")),
         indexer_interval_sec=float(env.get("INDEXER_INTERVAL_SEC", "5")),
         log_chunk_blocks=int(env.get("LOG_CHUNK_BLOCKS", "2000")),
         faucet_max_usdc=int(env.get("FAUCET_MAX_USDC", "2000")),
         max_upload_bytes=int(env.get("MAX_UPLOAD_BYTES", str(5 * 1024 * 1024))),
         api_public_url=env.get("API_PUBLIC_URL", "http://127.0.0.1:8000").rstrip("/"),
+        # 0,5 USDC ≈ 13.000 ₫ và 0,1 USDC ≈ 2.600 ₫ ở tỷ giá demo 26.000
+        relay_fee_create=_token_units(env, "RELAY_FEE_CREATE_USDC", "0.5", token_decimals),
+        relay_fee_buy=_token_units(env, "RELAY_FEE_BUY_USDC", "0.5", token_decimals),
+        relay_fee_withdraw=_token_units(env, "RELAY_FEE_WITHDRAW_USDC", "0.1", token_decimals),
+        b2_key_id=(env.get("B2_KEY_ID") or "").strip() or None,
+        b2_application_key=(env.get("B2_APPLICATION_KEY") or "").strip() or None,
+        b2_bucket=(env.get("B2_BUCKET") or "").strip() or None,
         qc=qc,
     )
     if net.fx_source == "http" and not s.fx_url:
         raise ValueError("Mainnet cần FX_URL để lấy tỷ giá USDC/VND thật")
-    if name != "local" and not s.admin_api_key:
-        raise ValueError(f"Thiếu ADMIN_API_KEY (bắt buộc với NETWORK={name})")
+    if s.review_auto_approve_hours < 0:
+        raise ValueError("REVIEW_AUTO_APPROVE_HOURS phải >= 0 (0 = chờ chủ chiến dịch duyệt mãi)")
+    if s.b2_bucket and not (s.b2_key_id and s.b2_application_key):
+        raise ValueError("Đã đặt B2_BUCKET thì phải có cả B2_KEY_ID và B2_APPLICATION_KEY (Backblaze → App Keys)")
     return s
 
 

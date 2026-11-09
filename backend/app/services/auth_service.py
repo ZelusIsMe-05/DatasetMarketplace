@@ -1,4 +1,8 @@
-"""Đăng nhập: Google OAuth (ID token) + chứng minh sở hữu ví bằng chữ ký; mỗi email đúng một ví (§8.2).
+"""Đăng nhập: Google OAuth (ID token); mỗi email đúng một ví (§8.2).
+
+- LẦN ĐẦU: email chưa gắn ví ⇒ phải kèm chứng minh sở hữu ví (ký challenge) để gắn email ↔ ví (lưu DB).
+- CÁC LẦN SAU: chỉ cần Google ⇒ phiên của đúng ví đã gắn (implementation-plan §3 #27). Phiên chỉ cho thao tác
+  off-chain; mọi thao tác chuyển tiền on-chain vẫn cần chữ ký của chính ví đó.
 
 Cơ chế dev (`login_dev`) chỉ hoạt động khi NETWORK=local và DEV_AUTH_ENABLED=true; router của nó
 không được mount ở môi trường khác (xem app/main.py).
@@ -17,13 +21,20 @@ from app.core.errors import BadRequest, Conflict, Forbidden, ServiceUnavailable,
 from app.core.security import issue_session
 from app.models import AuthChallenge, User
 from app.repositories.queries import UserRepo
-from app.schemas.auth import ChallengeResponse, SessionResponse
+from app.schemas.auth import ChallengeResponse, MeResponse, ProfileUpdate, SessionResponse
 
 CHALLENGE_TTL = timedelta(minutes=5)
 
 
 def _as_utc(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
+def me_response(u: User) -> MeResponse:
+    return MeResponse(
+        user_id=u.id, email=u.email, wallet_address=u.wallet_address, auth_provider=u.auth_provider,
+        display_name=u.display_name, avatar=u.avatar or "auto",
+    )
 
 
 class AuthService:
@@ -82,7 +93,13 @@ class AuthService:
             s.add(user)
             s.flush()
         elif user.wallet_address != address:
-            raise Conflict("Email này đã gắn với một ví khác (mỗi email một ví)", code="email_bound")
+            # Trả địa chỉ ví đã gắn để giao diện hướng dẫn "nâng cấp": nạp chính ví đó vào MetaMask/Core (cùng địa chỉ).
+            # Chỉ người vừa chứng minh sở hữu email (Google ID token) và ví (chữ ký challenge) mới tới được đây.
+            raise Conflict(
+                "Email này đã gắn với một ví khác (mỗi email một ví)",
+                code="email_bound",
+                details={"bound_wallet": user.wallet_address},
+            )
         return user
 
     def _session(self, user: User) -> SessionResponse:
@@ -93,7 +110,27 @@ class AuthService:
             access_token=token, expires_at=exp, user_id=user.id, email=user.email, wallet_address=user.wallet_address
         )
 
-    def login_google(self, id_token_str: str, address: str, nonce: str, signature: str) -> SessionResponse:
+    def _login(
+        self, s: Session, email: str, provider: str, google_sub: str | None,
+        address: str | None, nonce: str | None, signature: str | None,
+    ) -> User:
+        """Có chữ ký ví ⇒ gắn / xác nhận ví (như cũ). Không có ⇒ chỉ vào được email ĐÃ gắn ví."""
+        if address or nonce or signature:
+            if not (address and nonce and signature):
+                raise BadRequest("Cần đủ địa chỉ ví, nonce và chữ ký để gắn ví")
+            addr = self._consume_challenge(s, address, nonce, signature)
+            return self._bind(s, email, addr, provider, google_sub)
+        user = UserRepo.by_email(s, email.strip().lower())
+        if user is None:
+            raise Conflict(
+                "Email này chưa gắn ví. Lần đầu đăng nhập, hãy kết nối ví và ký xác nhận để gắn ví với email (lưu cho các lần sau).",
+                code="wallet_required",
+            )
+        return user
+
+    def login_google(
+        self, id_token_str: str, address: str | None = None, nonce: str | None = None, signature: str | None = None
+    ) -> SessionResponse:
         if not self.settings.google_client_id:
             raise ServiceUnavailable("Google OAuth chưa được cấu hình (GOOGLE_CLIENT_ID)")
         from google.auth.transport import requests as google_requests
@@ -108,18 +145,36 @@ class AuthService:
         if not info.get("email") or not info.get("email_verified"):
             raise Unauthorized("Email Google chưa được xác minh")
         with self.sf() as s:
-            addr = self._consume_challenge(s, address, nonce, signature)
-            user = self._bind(s, info["email"], addr, "google", info.get("sub"))
+            user = self._login(s, info["email"], "google", info.get("sub"), address, nonce, signature)
             s.commit()
             return self._session(user)
 
-    def login_dev(self, email: str, address: str, nonce: str, signature: str) -> SessionResponse:
+    def login_dev(
+        self, email: str, address: str | None = None, nonce: str | None = None, signature: str | None = None
+    ) -> SessionResponse:
         if not self.settings.dev_mode:  # phòng thủ thêm: router dev vốn không được mount ngoài local
             raise Forbidden("Đăng nhập dev chỉ dùng được khi NETWORK=local")
         if "@" not in email:
             raise BadRequest("Email không hợp lệ")
         with self.sf() as s:
-            addr = self._consume_challenge(s, address, nonce, signature)
-            user = self._bind(s, email, addr, "dev", None)
+            user = self._login(s, email, "dev", None, address, nonce, signature)
             s.commit()
             return self._session(user)
+
+    # ------------------------------------------------------------------ cài đặt tài khoản (§3 #31)
+
+    def update_profile(self, user: User, body: ProfileUpdate) -> MeResponse:
+        """Đổi tên hiển thị / mẫu ảnh đại diện. Ví liên kết KHÔNG đổi được (mỗi Gmail gắn đúng một ví)."""
+        with self.sf() as s:
+            u = s.get(User, user.id)
+            if u is None:
+                raise Unauthorized("Phiên đăng nhập không còn hợp lệ")
+            if body.display_name is not None:
+                name = " ".join(body.display_name.split())  # gộp khoảng trắng, bỏ xuống dòng / tab
+                if any(not ch.isprintable() for ch in name):
+                    raise BadRequest("Tên hiển thị có ký tự không hợp lệ")
+                u.display_name = name or None
+            if body.avatar is not None:
+                u.avatar = None if body.avatar == "auto" else body.avatar
+            s.commit()
+            return me_response(u)

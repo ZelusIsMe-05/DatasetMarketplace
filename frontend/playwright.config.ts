@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * E2E thật: Next dev (3000) + backend FastAPI (8000) + Anvil (8545) phải đang chạy
+ * E2E thật: Next dev (3000) + backend FastAPI (8000) + Anvil (8386) phải đang chạy
  * (scripts\start-anvil.bat, scripts\deploy-local.bat, scripts\start-backend.bat, npm run dev).
  *
  * Micro giả của Chromium phát một bản ghi tiếng Việt THẬT (fixture của backend) để chạy luồng ghi âm + QC thật.

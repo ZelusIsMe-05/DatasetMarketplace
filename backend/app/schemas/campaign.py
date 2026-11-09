@@ -3,6 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from app.schemas.common import Money
+from app.schemas.review import ReviewStats
 
 
 class CampaignDraftRequest(BaseModel):
@@ -84,6 +85,7 @@ class CampaignSummary(BaseModel):
 
 
 class CampaignDetail(CampaignSummary):
+    review: ReviewStats = Field(description="Chủ chiến dịch duyệt vùng xám: đang chờ / đã duyệt / tự duyệt khi quá hạn / đã loại")
     description: str | None
     purpose: str | None
     license: str | None

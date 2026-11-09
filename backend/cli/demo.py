@@ -181,8 +181,9 @@ def run_e2e(ctx: Ctx, target_sec: int = 30) -> int:  # noqa: C901, PLR0915
     ck.check("Mỗi ví chỉ mua một license", e is not None, str(e or ""))
 
     # 8) Phiên bản dataset v1 + tải theo license
-    snap1 = ctx.admin().post(f"/admin/snapshot/{cid}")
-    ck.check(f"Công bố snapshot v{snap1['version']} (Merkle root on-chain)", snap1["leaf_count"] == len(plan), snap1["merkle_root"][:18])
+    snap1 = ctx.publish_snapshot("creator", cid)  # chủ chiến dịch ký PublishSnapshot (§3 #28)
+    ck.check(f"Chủ chiến dịch ký công bố snapshot v{snap1['version']} (Merkle root on-chain)", snap1["leaf_count"] == len(plan),
+             snap1["merkle_root"][:18])
     dl = ctx.download("labx", cid, None)
     ck.check("Lab X tải dataset: proof Merkle + sha256 khớp, root có trên chain",
              dl["verify"]["proofs_ok"] and dl["verify"]["root_on_chain"], f"{len(dl['verify']['entries'])} bản ghi")
@@ -205,13 +206,17 @@ def run_e2e(ctx: Ctx, target_sec: int = 30) -> int:  # noqa: C901, PLR0915
     ck.check("Thu hồi làm giá giảm", q2["price"]["units"] == _price(10**9, exp_prog2) < q["price"]["units"], ui.money(q2["price"]))
     ck.check("An giữ tiền đã rút", ch.token_balance(an_addr) - bal0 == pa - cl["fee"]["units"])
     det = ctx.public().get(f"/campaigns/{cid}")
-    ck.check("Backend tự công bố phiên bản dataset mới", det["latest_snapshot"]["version"] > snap_before,
-             f"v{det['latest_snapshot']['version']}")
+    ck.check("Phiên bản cũ bị khóa (stale) sau thu hồi, chờ chủ chiến dịch công bố", det["latest_snapshot"]["status"] == "stale",
+             f"v{det['latest_snapshot']['version']} {det['latest_snapshot']['status']}")
     try:
         ctx.public().get_url(old_link)
         ck.check("Link tải phiên bản cũ (chứa bản ghi đã thu hồi) bị vô hiệu", False)
     except ApiError as e:
         ck.check("Link tải phiên bản cũ (chứa bản ghi đã thu hồi) bị vô hiệu", e.status == 410, f"HTTP {e.status}")
+
+    snap2 = ctx.publish_snapshot("creator", cid)
+    ck.check(f"Chủ chiến dịch ký công bố phiên bản mới v{snap2['version']} (không còn bản ghi đã thu hồi)",
+             snap2["version"] > snap_before and snap2["leaf_count"] == len(reg["binh"]), snap2["merkle_root"][:18])
 
     # 10) Lab Y mua sau với giá thấp hơn — toàn bộ phần người đóng góp về Bình
     pb_before = ch.vc.functions.pendingReward(cid, ctx.wallet("binh").address).call()

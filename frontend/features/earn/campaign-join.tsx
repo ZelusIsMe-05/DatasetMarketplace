@@ -3,7 +3,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { use, useState } from "react";
-import { signTyped } from "@/lib/browserWallet";
+import { whenVisible } from "@/lib/visibility";
+import { describeChainError } from "@/lib/chainErrors";
 import { formatDate, formatDuration, shortHex } from "@/lib/format";
 import { qk, useCampaign, useTerms } from "@/hooks/queries";
 import { useContributor } from "@/hooks/useSessions";
@@ -108,27 +109,28 @@ function ConsentDialog({ campaignId, open, onClose }: { campaignId: number; open
   const busy = steps?.some((s) => ["signing", "pending"].includes(s.phase)) ?? false;
 
   const sign = async () => {
-    if (!c.api || !c.account) return;
+    if (!c.api || !c.signer) return;
     const set = (a: TxStepView["phase"], b: TxStepView["phase"], extra: Partial<TxStepView> = {}) =>
       setSteps([
-        { label: "Ký đồng thuận trên thiết bị của bạn", phase: a, note: "Chữ ký EIP-712 gắn với đúng mã băm điều khoản" },
-        { label: "Nền tảng gửi lên Avalanche", phase: b, note: "Không tốn AVAX — nền tảng trả phí mạng", ...extra },
+        { label: c.kind === "metamask" ? "Ký đồng thuận trong MetaMask" : "Ký đồng thuận", phase: a },
+        { label: "Ghi nhận đồng thuận", phase: b, ...extra },
       ]);
     try {
       set("signing", "waiting");
       const td = await c.api.consentTypedData(campaignId);
-      const sig = await signTyped(c.account, td);
+      const sig = await c.signer.signTypedData(td);
       set("success", "pending");
       const res = await c.api.consent(campaignId, td.deadline, sig);
       set("success", "success", { hash: res.tx_hash ?? undefined });
       await qc.invalidateQueries({ queryKey: qk.consent(campaignId, c.address ?? undefined) });
       toast.success("Đã ký đồng thuận", "Bạn có thể bắt đầu ghi âm.");
-      window.setTimeout(() => {
+      window.setTimeout(async () => {
+        await whenVisible(); // vừa ký trong cửa sổ ví: chuyển trang khi tab hiện lại (tránh InvalidStateError của View Transitions)
         onClose();
         router.push(`/earn/campaigns/${campaignId}/record`);
       }, 700);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Lỗi không xác định";
+      const msg = describeChainError(e);
       setSteps((s) => s?.map((x) => (x.phase === "signing" || x.phase === "pending" ? { ...x, phase: "error", error: msg } : x)) ?? null);
     }
   };

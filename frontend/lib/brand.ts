@@ -1,6 +1,6 @@
-// Tên thương hiệu hiển thị — đổi tên sản phẩm chỉ cần sửa ở đây (đặc tả ghi "GiọngQuê" là tên tạm).
-// KHÔNG đổi các định danh kỹ thuật: domain EIP-712 "GiongQue" (khắc trong contract), khóa localStorage "giongque.*"
-// (đổi sẽ làm mất ví đã tạo trong trình duyệt), lệnh CLI `giongque`.
+// Tên thương hiệu hiển thị — đổi tên sản phẩm chỉ cần sửa ở đây.
+// Định danh kỹ thuật (đổi tên từ "giongque" ngày 09/11, implementation-plan §3 #30): domain EIP-712 "DatasetMarketplace"
+// (khắc trong contract), khóa localStorage "datasetmarketplace.*" (lib/legacy-storage.ts chuyển khóa cũ), lệnh CLI `datasetmarketplace`.
 export const BRAND = {
   name: "Dataset Marketplace",
   /** Logo hai màu: phần đầu màu chữ, phần sau màu thương hiệu */

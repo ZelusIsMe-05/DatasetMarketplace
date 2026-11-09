@@ -52,7 +52,8 @@ class RewardsService:
                         onchain_id=c.onchain_id,
                         tx_hash=c.tx_hash,
                         revoke_tx_hash=c.revoke_tx_hash,
-                        reasons=reasons + ([c.error] if c.error else []),
+                        reasons=reasons + ([c.error] if c.error else [])
+                        + ([f"Chủ chiến dịch loại: {c.review_note}"] if c.review_decision == "rejected" and c.review_note else []),
                         created_at=int(c.created_at.timestamp()),
                     )
                 )

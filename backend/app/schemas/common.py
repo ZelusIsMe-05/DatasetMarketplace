@@ -9,7 +9,7 @@ class Money(BaseModel):
     units: int = Field(description="Đơn vị on-chain của token (USDC: 6 số thập phân)")
     vnd: int = Field(description="VNĐ đã quy đổi theo tỷ giá đang dùng (làm tròn đến đồng)")
     display: str = Field(description='Ví dụ "≈ 16.900.000 ₫"')
-    token: str = Field(description='Ví dụ "650 USDC trên Avalanche"')
+    token: str = Field(description='Số token on-chain, ví dụ "650 USDC" (giao diện web chỉ hiện VNĐ)')
 
 
 class TxInfo(BaseModel):

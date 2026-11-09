@@ -32,9 +32,9 @@ from app.repositories.queries import ContributionRepo
 from app.schemas.contribution import ContributionResult, QcReport
 from app.services.fx_service import FxService
 from app.services.prompt_service import PROMPT_PURPOSE
-from app.services.storage import PrivateStorage
+from app.services.storage import AudioStorage
 
-log = logging.getLogger("giongque.contributions")
+log = logging.getLogger("datasetmarketplace.contributions")
 
 LIVE_GRACE_SEC = 1.5  # dung sai đồng hồ/mạng khi so thời lượng audio với thời gian từ lúc cấp câu
 PERMANENT_CHAIN_ERRORS = {"NotCollecting", "NoConsent", "DuplicateCommitment", "InvalidParams"}
@@ -60,7 +60,7 @@ class ContributionService:
         qc_signer: Relayer,
         indexer: EventIndexer,
         qc: QcService,
-        storage: PrivateStorage,
+        storage: AudioStorage,
         fx: FxService,
     ):
         self.settings, self.sf, self.chain, self.qc_signer = settings, sf, chain, qc_signer
@@ -151,7 +151,7 @@ class ContributionService:
 
         if res.decision == "pass":
             return self.register(cid, qc=res)
-        msg = "Bản ghi ở vùng xám, đang chờ duyệt tay" if res.decision == "gray" else "Bản ghi chưa đạt, hãy đọc lại"
+        msg = "Bản ghi ở vùng xám, đang chờ chủ chiến dịch duyệt" if res.decision == "gray" else "Bản ghi chưa đạt, hãy đọc lại"
         return self._result(cid, res, msg)
 
     # ------------------------------------------------------------------ ghi nhận on-chain
@@ -201,7 +201,7 @@ class ContributionService:
             c.error = None
             s.commit()
         self.indexer.sync()
-        return self._result(contribution_id, qc, "Bản ghi đạt và đã được ghi nhận trên Avalanche")
+        return self._result(contribution_id, qc, "Bản ghi đạt và đã được ghi nhận")
 
     def _result(self, contribution_id: int, qc: QCResult | None, message: str) -> ContributionResult:
         with self.sf() as s:

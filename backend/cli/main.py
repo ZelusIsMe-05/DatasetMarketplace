@@ -1,15 +1,15 @@
-"""giongque — CLI cho Dataset Marketplace. Chạy `giongque --help` hoặc `python -m cli --help`.
+"""datasetmarketplace — CLI cho Dataset Marketplace. Chạy `datasetmarketplace --help` hoặc `python -m cli --help`.
 
 Ví dụ nhanh (local):
-    giongque wallet init-local
-    giongque status
-    giongque campaign list
-    giongque consent give 0 --as an
-    giongque contribution submit 0 --as an --audio tests\\fixtures\\audio\\prompt00_hoaimy.wav --prompt-index 0
-    giongque market buy 0 --as labx
-    giongque rewards claim 0 --as an
-    giongque contribution revoke 0 --as an
-    giongque demo e2e
+    datasetmarketplace wallet init-local
+    datasetmarketplace status
+    datasetmarketplace campaign list
+    datasetmarketplace consent give 0 --as an
+    datasetmarketplace contribution submit 0 --as an --audio tests\\fixtures\\audio\\prompt00_hoaimy.wav --prompt-index 0
+    datasetmarketplace market buy 0 --as labx
+    datasetmarketplace rewards claim 0 --as an
+    datasetmarketplace contribution revoke 0 --as an
+    datasetmarketplace demo e2e
 """
 from __future__ import annotations
 
@@ -38,12 +38,12 @@ contrib_app = typer.Typer(help="Đóng góp: nộp bản ghi, danh sách, thu h�
 market_app = typer.Typer(help="Mua bán: giá, mua license, doanh thu.", no_args_is_help=True)
 rewards_app = typer.Typer(help="Tiền: số dư, rút qua relayer / tự rút, rút phần chia.", no_args_is_help=True)
 dataset_app = typer.Typer(help="Phiên bản dataset: snapshot, tải, kiểm tra Merkle.", no_args_is_help=True)
-admin_app = typer.Typer(help="Quản trị: duyệt vùng xám, relayer, đồng bộ.", no_args_is_help=True)
+review_app = typer.Typer(help="Chủ chiến dịch duyệt bản ghi vùng xám (không có vai trò quản trị).", no_args_is_help=True)
 demo_app = typer.Typer(help="Demo: faucet mUSDC, kịch bản end-to-end.", no_args_is_help=True)
 for sub, name in [
     (wallet_app, "wallet"), (campaign_app, "campaign"), (consent_app, "consent"), (prompt_app, "prompt"),
     (qc_app, "qc"), (contrib_app, "contribution"), (market_app, "market"), (rewards_app, "rewards"),
-    (dataset_app, "dataset"), (admin_app, "admin"), (demo_app, "demo"),
+    (dataset_app, "dataset"), (review_app, "review"), (demo_app, "demo"),
 ]:
     app.add_typer(sub, name=name)
 
@@ -55,8 +55,8 @@ JsonOpt = Annotated[bool, typer.Option("--json", help="In JSON thô")]
 
 @app.callback()
 def _root(
-    api: Annotated[str | None, typer.Option(help="URL backend (mặc định GIONGQUE_API hoặc http://127.0.0.1:8000)")] = None,
-    rpc: Annotated[str | None, typer.Option(help="RPC chain (mặc định GIONGQUE_RPC hoặc http://127.0.0.1:8545)")] = None,
+    api: Annotated[str | None, typer.Option(help="URL backend (mặc định DATASETMARKETPLACE_API hoặc http://127.0.0.1:8000)")] = None,
+    rpc: Annotated[str | None, typer.Option(help="RPC chain (mặc định DATASETMARKETPLACE_RPC hoặc http://127.0.0.1:8386)")] = None,
 ) -> None:
     if api:
         CTX.api_url = api.rstrip("/")
@@ -496,9 +496,9 @@ def rewards_withdraw_seed(campaign_id: CampaignArg, as_: As) -> None:
 
 @dataset_app.command("snapshot")
 @handle
-def dataset_snapshot(campaign_id: CampaignArg) -> None:
-    """[admin] Đóng gói phiên bản, tính Merkle root, gọi publishSnapshot."""
-    s = CTX.admin().post(f"/admin/snapshot/{campaign_id}")
+def dataset_snapshot(campaign_id: CampaignArg, as_: As = "creator") -> None:
+    """Chủ chiến dịch công bố phiên bản dataset: ký PublishSnapshot bằng ví của mình (relayer gửi, không tốn AVAX)."""
+    s = CTX.publish_snapshot(as_, campaign_id)
     ui.ok(f"Phiên bản v{s['version']}: {s['leaf_count']} bản ghi, {s['total_sec']} giây, root {s['merkle_root']} — tx {s['tx_hash']}")
 
 
@@ -522,45 +522,35 @@ def dataset_verify(zip_file: Path, campaign_id: CampaignArg) -> None:
     ui.dump(CTX.verify_zip(zip_file.read_bytes(), campaign_id))
 
 
-# ====================================================================== admin
+# ====================================================================== chủ chiến dịch duyệt vùng xám
 
 
-@admin_app.command("review")
+@review_app.command("list")
 @handle
-def admin_review() -> None:
-    """Hàng chờ vùng xám."""
-    items = CTX.admin().get("/admin/review")
-    ui.table("Chờ duyệt", ["#", "Chiến dịch", "Ví", "Trạng thái", "CER", "Align", "Câu"], [
-        [i["id"], i["campaign_id"], i["address"][:10], i["status"], (i["qc"] or {}).get("cer"), (i["qc"] or {}).get("align_score"),
+def review_list(as_: As = "creator", campaign_id: Annotated[int | None, typer.Option(help="Chỉ một chiến dịch")] = None) -> None:
+    """Hàng chờ vùng xám của các chiến dịch do ví này tạo."""
+    items = CTX.review_queue(as_, campaign_id)
+    ui.table("Chờ duyệt", ["#", "Chiến dịch", "Ví", "CER", "Align", "Câu"], [
+        [i["id"], i["campaign_id"], i["address"][:10], (i["qc"] or {}).get("cer"), (i["qc"] or {}).get("align_score"),
          i["prompt_text"][:40]] for i in items
     ])
 
 
-@admin_app.command("approve")
+@review_app.command("approve")
 @handle
-def admin_approve(contribution_id: int, note: Annotated[str | None, typer.Option()] = None) -> None:
-    r = CTX.admin().post(f"/admin/review/{contribution_id}", json={"decision": "approve", "note": note})
-    _print_contribution(r)
+def review_approve(contribution_id: int, as_: As = "creator", note: Annotated[str | None, typer.Option()] = None) -> None:
+    """Duyệt ⇒ ghi nhận on-chain, trả tiền mồi."""
+    _print_contribution(CTX.review_decide(as_, contribution_id, "approve", note))
 
 
-@admin_app.command("reject")
+@review_app.command("reject")
 @handle
-def admin_reject(contribution_id: int, note: Annotated[str | None, typer.Option()] = None) -> None:
-    r = CTX.admin().post(f"/admin/review/{contribution_id}", json={"decision": "reject", "note": note})
-    ui.ok(r["message"])
-
-
-@admin_app.command("relayer")
-@handle
-def admin_relayer() -> None:
-    """Số dư relayer/QC oracle, phí, giao dịch gần đây."""
-    ui.dump(CTX.admin().get("/admin/relayer"))
-
-
-@admin_app.command("sync")
-@handle
-def admin_sync() -> None:
-    ui.dump(CTX.admin().post("/admin/sync"))
+def review_reject(
+    contribution_id: int, note: Annotated[str, typer.Option(help="Lý do loại (bắt buộc, người đóng góp sẽ thấy)")],
+    as_: As = "creator",
+) -> None:
+    """Loại ⇒ xóa audio; bắt buộc ghi lý do."""
+    ui.ok(CTX.review_decide(as_, contribution_id, "reject", note)["message"])
 
 
 # ====================================================================== demo

@@ -4,10 +4,11 @@ import { AnimatePresence, motion } from "motion/react";
 import { txUrl } from "@/lib/config";
 import { cn } from "@/lib/cn";
 import { shortHex } from "@/lib/format";
-import type { TxPhase } from "@/hooks/useContractTx";
 import { Spinner } from "@/components/ui/spinner";
 import { CopyButton } from "@/components/ui/misc";
 
+/** Trạng thái một bước ký/gửi (giao dịch do nền tảng gửi hộ hoặc relayer). */
+export type TxPhase = "idle" | "simulating" | "signing" | "pending" | "success" | "error";
 export type StepPhase = TxPhase | "waiting";
 
 export interface TxStepView {
@@ -24,7 +25,7 @@ const PHASE_TEXT: Record<StepPhase, string> = {
   waiting: "Chờ bước trước",
   simulating: "Đang kiểm tra trước…",
   signing: "Chờ bạn xác nhận trong ví",
-  pending: "Đang xác nhận trên Avalanche…",
+  pending: "Đang xác nhận…",
   success: "Hoàn tất",
   error: "Không thành công",
 };

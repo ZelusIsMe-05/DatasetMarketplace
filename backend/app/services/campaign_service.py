@@ -31,8 +31,9 @@ from app.schemas.campaign import (
     TermsResponse,
 )
 from app.services.fx_service import FxService
+from app.services.review_service import review_stats
 
-log = logging.getLogger("giongque.campaigns")
+log = logging.getLogger("datasetmarketplace.campaigns")
 
 _VI_LETTERS = re.compile(r"^[a-zàáảãạăằắẳẵặâầấẩẫậđèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ ]+$")
 SAMPLE_COUNT = 3
@@ -188,8 +189,9 @@ class CampaignService:
                 contract=self.chain.address,
                 token=self.chain.token_address,
                 create_campaign_args=args,
-                note="Người tạo ký createCampaign bằng ví của mình (approve token trước nếu có quỹ mồi), "
-                "sau đó gọi POST /campaigns/sync để liên kết metadata.",
+                note="Mặc định nền tảng trả phí mạng: GET /campaigns/drafts/{draft_id}/create-quote → ký CreateCampaign "
+                "(+ permit nếu cần) → POST /campaigns/drafts/{draft_id}/create. Hoặc tự gửi createCampaign bằng ví "
+                "của mình (approve token trước nếu có quỹ mồi) rồi gọi POST /campaigns/sync.",
             )
 
     def import_seed(self, seed_dir: Path) -> str | None:
@@ -320,6 +322,7 @@ class CampaignService:
                 terms_hash=view.terms_hash,
                 metadata_uri=view.metadata_uri,
                 samples=samples,
+                review=review_stats(s, campaign_id),
                 latest_snapshot=SnapshotRef(
                     version=snap.version, merkle_root=snap.merkle_root, uri=snap.uri, leaf_count=snap.leaf_count,
                     total_sec=snap.total_sec, status=snap.status, tx_hash=snap.tx_hash,

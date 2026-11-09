@@ -2,8 +2,10 @@
 
 - Zip được dựng lúc tải từ manifest của phiên bản; không lưu bản sao audio nào khác ngoài kho riêng tư,
   nên xóa audio khi thu hồi là xóa thật.
-- Phiên bản chứa bản ghi đã thu hồi bị đánh dấu `stale` và không phục vụ nữa; backend tự công bố
-  phiên bản mới nếu AUTO_SNAPSHOT_ON_REVOKE=true.
+- Phiên bản dataset thuộc quyền CHỦ CHIẾN DỊCH (§3 #28): chỉ chủ chiến dịch công bố, bằng chữ ký PublishSnapshot
+  (relayer gửi hộ). Nền tảng không tự công bố phiên bản nào.
+- Thu hồi: audio + salt bị xóa ngay và mọi phiên bản chứa bản ghi đó bị đánh dấu `stale` (không phục vụ nữa) — đó là
+  quyền của người đóng góp. Người mua tải lại được khi chủ chiến dịch ký công bố phiên bản mới.
 """
 from __future__ import annotations
 
@@ -20,22 +22,25 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from web3 import Web3
 
-from app.blockchain.client import ChainClient
-from app.blockchain.eip712 import recover_text
+from app.blockchain.client import CampaignView, ChainClient
+from app.blockchain.eip712 import publish_snapshot_message, recover_text, recover_typed, typed_data
 from app.blockchain.indexer import EventIndexer
 from app.blockchain.relayer import Relayer
 from app.core.config import Settings
 from app.core.errors import BadRequest, Conflict, Forbidden, Gone, NotFound, Unauthorized
 from app.core.security import TokenError, sign_token, verify_token
-from app.models import ContributionStatus, OnchainContribution, Prompt, Snapshot, UsedSignature
+from app.models import ContributionStatus, OnchainContribution, Prompt, Snapshot, UsedSignature, User
 from app.repositories.queries import CampaignRepo, ContributionRepo, SnapshotRepo
+from app.schemas.common import TypedDataResponse
 from app.schemas.dataset import DownloadMessage, DownloadResponse, SnapshotResponse
+from app.schemas.review import SnapshotPublishRequest, SnapshotQuote
 from app.services import merkle
 from app.services.campaign_service import SAMPLE_COUNT
+from app.services.consent_service import MAX_DEADLINE_SEC, SIGNATURE_WINDOW_SEC
 from app.services.fx_service import FxService
-from app.services.storage import PrivateStorage
+from app.services.storage import AudioStorage
 
-log = logging.getLogger("giongque.datasets")
+log = logging.getLogger("datasetmarketplace.datasets")
 DOWNLOAD_PURPOSE = "download"
 
 
@@ -64,7 +69,7 @@ class DatasetService:
         chain: ChainClient,
         qc_signer: Relayer,
         indexer: EventIndexer,
-        storage: PrivateStorage,
+        storage: AudioStorage,
         fx: FxService,
     ):
         self.settings, self.sf, self.chain, self.qc_signer = settings, sf, chain, qc_signer
@@ -73,9 +78,16 @@ class DatasetService:
 
     # ------------------------------------------------------------------ phiên bản
 
-    def publish_snapshot(self, campaign_id: int, reason: str = "manual") -> SnapshotResponse:
-        if self.chain.campaign(campaign_id) is None:
+    def _owner_view(self, user: User, campaign_id: int) -> CampaignView:
+        view = self.chain.campaign(campaign_id)
+        if view is None:
             raise NotFound("Không tìm thấy chiến dịch")
+        if view.creator.lower() != user.wallet_address.lower():
+            raise Forbidden("Chỉ chủ chiến dịch được công bố phiên bản dữ liệu của chiến dịch này", code="not_creator")
+        return view
+
+    def _build(self, campaign_id: int) -> dict:
+        """Đóng gói (chưa công bố) mọi bản ghi còn hiệu lực — tất định theo contributionId để báo giá và lúc gửi khớp nhau."""
         self.indexer.sync()
         with self.sf() as s:
             entries = []
@@ -94,42 +106,96 @@ class DatasetService:
                     }
                 )
             if not entries:
-                raise BadRequest("Chưa có bản ghi hợp lệ nào để đóng gói")
+                raise BadRequest("Chưa có bản ghi hợp lệ nào để đóng gói", code="no_contributions")
             latest = SnapshotRepo.latest(s, campaign_id)
-            version = (latest.version if latest else 0) + 1
+            latest_info = (latest.version, latest.status, latest.merkle_root) if latest else None
+        entries.sort(key=lambda e: e["contributionId"])
+        version = (latest_info[0] if latest_info else 0) + 1
         leaves = [merkle.leaf_hash(e["contributionId"], e["commitment"], e["path"]) for e in entries]
         root = merkle.root(leaves)
         for e, leaf in zip(entries, leaves):
             e["leaf"] = "0x" + leaf.hex()
             e["proof"] = ["0x" + p.hex() for p in merkle.proof(leaves, leaf)]
-        root_hex = "0x" + root.hex()
         uri = f"{self.settings.api_public_url}/datasets/{campaign_id}/snapshots/{version}"
+        return {"entries": entries, "root": root, "root_hex": "0x" + root.hex(), "version": version, "uri": uri,
+                "latest": latest_info}
+
+    @staticmethod
+    def _changed(b: dict) -> bool:
+        latest = b["latest"]
+        return latest is None or latest[1] != "published" or latest[2] != b["root_hex"]
+
+    def snapshot_quote(self, user: User, campaign_id: int) -> SnapshotQuote:
+        """Bản tóm tắt phiên bản sắp công bố + dữ liệu PublishSnapshot để CHỦ CHIẾN DỊCH ký (§3 #28)."""
+        view = self._owner_view(user, campaign_id)
+        b = self._build(campaign_id)
+        nonce = self.chain.nonce_of(view.creator)
+        deadline = self.chain.block_timestamp() + SIGNATURE_WINDOW_SEC
+        msg = publish_snapshot_message(campaign_id, b["root_hex"], b["uri"], nonce, deadline)
+        latest = b["latest"]
+        return SnapshotQuote(
+            campaign_id=campaign_id,
+            version=b["version"],
+            leaf_count=len(b["entries"]),
+            total_sec=sum(e["durationSec"] for e in b["entries"]),
+            merkle_root=b["root_hex"],
+            uri=b["uri"],
+            latest_version=latest[0] if latest else None,
+            latest_status=latest[1] if latest else None,
+            changed=self._changed(b),
+            sign=TypedDataResponse(
+                typed_data=typed_data(self.chain.domain(), "PublishSnapshot", msg), nonce=nonce, deadline=deadline
+            ),
+        )
+
+    def publish_signed(self, user: User, campaign_id: int, body: SnapshotPublishRequest) -> SnapshotResponse:
+        """Chủ chiến dịch đã ký PublishSnapshot ⇒ relayer gọi publishSnapshotWithSig (nền tảng trả phí mạng)."""
+        view = self._owner_view(user, campaign_id)
+        now = self.chain.block_timestamp()
+        if body.deadline <= now or body.deadline > now + MAX_DEADLINE_SEC:
+            raise BadRequest("Chữ ký đã hết hạn hoặc hạn ký không hợp lệ — hãy ký lại", code="Expired")
+        b = self._build(campaign_id)
+        if body.merkle_root.lower() != b["root_hex"]:
+            raise Conflict("Dữ liệu vừa thay đổi (có bản ghi mới hoặc bị thu hồi) — hãy xem lại bản tóm tắt rồi ký lại",
+                           code="snapshot_changed")
+        if not self._changed(b):
+            raise Conflict("Phiên bản đang công bố đã đúng dữ liệu mới nhất", code="snapshot_unchanged")
+        nonce = self.chain.nonce_of(view.creator)
+        msg = publish_snapshot_message(campaign_id, b["root_hex"], b["uri"], nonce, body.deadline)
+        try:
+            signer = recover_typed(typed_data(self.chain.domain(), "PublishSnapshot", msg), body.signature)
+        except Exception as e:  # noqa: BLE001
+            raise Unauthorized("Chữ ký không đúng định dạng") from e
+        if signer != view.creator:
+            raise Unauthorized("Chữ ký công bố không phải của chủ chiến dịch")
         res = self.qc_signer.send(
-            self.chain.contract.functions.publishSnapshot(campaign_id, root, uri),
+            self.chain.contract.functions.publishSnapshotWithSig(
+                campaign_id, b["root"], b["uri"], body.deadline, bytes.fromhex(body.signature.removeprefix("0x"))
+            ),
             kind="snapshot",
-            meta={"campaign_id": campaign_id, "version": version, "reason": reason},
+            meta={"campaign_id": campaign_id, "version": b["version"], "creator": view.creator},
         )
         manifest = {
             "campaignId": campaign_id,
-            "version": version,
-            "merkleRoot": root_hex,
-            "uri": uri,
+            "version": b["version"],
+            "merkleRoot": b["root_hex"],
+            "uri": b["uri"],
             "chainId": self.chain.chain_id,
             "contract": self.chain.address,
             "publishTx": res.tx_hash,
+            "publishedBy": view.creator,
             "leafEncoding": "keccak256(keccak256(abi.encode(uint256 contributionId, bytes32 commitment, string path)))",
             "nodeHashing": "keccak256(sorted(a, b)) — tương thích OpenZeppelin MerkleProof.verify",
             "createdAt": int(time.time()),
-            "reason": reason,
-            "entries": entries,
+            "entries": b["entries"],
         }
         with self.sf() as s:
             for old in SnapshotRepo.published(s, campaign_id):
                 old.status = "superseded"
             snap = Snapshot(
-                campaign_id=campaign_id, version=version, merkle_root=root_hex, uri=uri,
-                manifest_json=json.dumps(manifest, ensure_ascii=False), leaf_count=len(entries),
-                total_sec=sum(e["durationSec"] for e in entries), status="published", tx_hash=res.tx_hash,
+                campaign_id=campaign_id, version=b["version"], merkle_root=b["root_hex"], uri=b["uri"],
+                manifest_json=json.dumps(manifest, ensure_ascii=False), leaf_count=len(b["entries"]),
+                total_sec=sum(e["durationSec"] for e in b["entries"]), status="published", tx_hash=res.tx_hash,
             )
             s.add(snap)
             s.commit()
@@ -151,7 +217,7 @@ class DatasetService:
     # ------------------------------------------------------------------ thu hồi -> xóa dữ liệu
 
     def purge_revoked(self, onchain_id: int) -> None:
-        """Xóa audio + salt của bản ghi đã thu hồi, đánh dấu phiên bản cũ stale, công bố phiên bản mới."""
+        """Xóa audio + salt của bản ghi đã thu hồi và khóa (stale) mọi phiên bản chứa nó."""
         campaign_id = None
         stale_any = False
         with self.sf() as s:
@@ -176,12 +242,9 @@ class DatasetService:
                     snap.stale_reason = f"chứa bản ghi #{onchain_id} đã thu hồi"
                     stale_any = True
             s.commit()
-            has_active = bool(ContributionRepo.active_registered(s, campaign_id))
-        if stale_any and self.settings.auto_snapshot_on_revoke and has_active:
-            try:
-                self.publish_snapshot(campaign_id, reason=f"revoke #{onchain_id}")
-            except Exception:  # noqa: BLE001 - admin có thể công bố lại bằng tay
-                log.exception("Không tự công bố được phiên bản mới sau thu hồi #%s", onchain_id)
+        if stale_any:
+            # Không tự công bố: phiên bản dataset thuộc quyền chủ chiến dịch (§3 #28).
+            log.info("Chiến dịch %s cần chủ chiến dịch công bố phiên bản mới (bản ghi #%s đã thu hồi)", campaign_id, onchain_id)
 
     # ------------------------------------------------------------------ tải dataset theo license
 
@@ -219,7 +282,7 @@ class DatasetService:
                 raise Unauthorized("Chữ ký này đã được dùng") from e
             snap = SnapshotRepo.latest(s, campaign_id)
             if snap is None or snap.status != "published":
-                raise Conflict("Chưa có phiên bản dataset hợp lệ (cần công bố snapshot mới)", code="no_snapshot")
+                raise Conflict("Chủ chiến dịch chưa công bố phiên bản dữ liệu hợp lệ (hoặc đang cập nhật sau khi có bản ghi bị thu hồi)", code="no_snapshot")
             tok = sign_token(
                 self.settings.token_secret,
                 DOWNLOAD_PURPOSE,

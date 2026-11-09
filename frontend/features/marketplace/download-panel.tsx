@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useAccount, useSignMessage } from "wagmi";
+import { useSignMessage } from "wagmi";
 import type { DownloadResponse, LicenseInfo } from "@/types/api";
+import { describeChainError } from "@/lib/chainErrors";
 import { formatDate, formatDuration, shortHex } from "@/lib/format";
 import { useCampaign } from "@/hooks/queries";
+import { useAccountWallet } from "@/hooks/useSessions";
 import { ApiError, publicApi } from "@/services/api";
 import { useToast } from "@/providers/toast-provider";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +18,8 @@ import { CopyButton } from "@/components/ui/misc";
  * Bản tải luôn là phiên bản mới nhất còn hiệu lực (đã loại bản ghi bị thu hồi).
  */
 export function DownloadPanel({ campaignId, license, compact }: { campaignId: number; license: LicenseInfo; compact?: boolean }) {
-  const { address } = useAccount();
+  const aw = useAccountWallet();
+  const address = aw.metamask === "ready" ? aw.address : null; // ví đã gắn với Gmail đang đăng nhập
   const { signMessageAsync } = useSignMessage();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -36,7 +39,7 @@ export function DownloadPanel({ campaignId, license, compact }: { campaignId: nu
       window.location.assign(res.download_url); // file zip (audio + manifest + proof Merkle)
       toast.success(`Đang tải phiên bản v${res.snapshot.version}`, `${res.snapshot.leaf_count} bản ghi · link hết hạn sau 10 phút`);
     } catch (e) {
-      const m = e instanceof ApiError && e.code === "no_snapshot" ? "Chưa có phiên bản dữ liệu được công bố. Đội QC sẽ công bố sớm." : e instanceof Error ? e.message.split("\n")[0] : undefined;
+      const m = e instanceof ApiError && e.code === "no_snapshot" ? "Chủ chiến dịch chưa công bố phiên bản dữ liệu hợp lệ (hoặc đang cập nhật sau khi có bản ghi bị thu hồi). Hãy quay lại sau." : describeChainError(e);
       toast.error("Chưa tải được dữ liệu", m);
     } finally {
       setBusy(false);
@@ -59,12 +62,11 @@ export function DownloadPanel({ campaignId, license, compact }: { campaignId: nu
         <dd className="text-right font-semibold tabular">{license.price_paid.display}</dd>
       </dl>
       <p className="text-sm text-ink-muted" aria-live="polite">
-        {detail.isLoading ? "Đang kiểm tra phiên bản…" : available ? `Phiên bản v${snap!.version}: ${snap!.leaf_count} bản ghi · ${formatDuration(snap!.total_sec)}` : "Chưa có phiên bản dữ liệu được công bố — đội QC sẽ công bố sớm."}
+        {detail.isLoading ? "Đang kiểm tra phiên bản…" : available ? `Phiên bản v${snap!.version}: ${snap!.leaf_count} bản ghi · ${formatDuration(snap!.total_sec)}` : "Chủ chiến dịch chưa công bố phiên bản dữ liệu hợp lệ — hãy quay lại sau."}
       </p>
       <Button onClick={download} loading={busy} disabled={!available} icon={<DownloadIcon />}>
         Tải phiên bản mới nhất
       </Button>
-      <p className="text-caption">Ví sẽ yêu cầu ký một thông điệp (không tốn phí) để chứng minh bạn sở hữu license.</p>
       {last && (
         <div className="rounded-2xl border border-line p-3 text-xs text-ink-muted">
           <p className="font-semibold text-ink">Phiên bản v{last.snapshot.version} · {last.snapshot.leaf_count} bản ghi</p>

@@ -15,6 +15,7 @@
 
 # ---- Dữ liệu riêng tư: audio người đóng góp, database, log
 storage/
+contracts/.anvil/
 *.log
 *.db
 *.db-*
@@ -41,8 +42,8 @@ __pycache__/
 .coverage.*
 htmlcov/
 # ví test + phiên đăng nhập của CLI (chứa private key test)
-backend/.giongque-cli/
-.giongque-cli/
+backend/.datasetmarketplace-cli/
+.datasetmarketplace-cli/
 
 # ---- Foundry
 contracts/out/

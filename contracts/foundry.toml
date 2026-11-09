@@ -18,7 +18,7 @@ remappings = [
 runs = 512
 
 [rpc_endpoints]
-local = "http://127.0.0.1:8545"
+local = "http://127.0.0.1:8386"  # Anvil của dự án (8545 chừa cho dự án Hardhat khác)
 fuji = "https://api.avax-test.network/ext/bc/C/rpc"
 mainnet = "https://api.avax.network/ext/bc/C/rpc"
 

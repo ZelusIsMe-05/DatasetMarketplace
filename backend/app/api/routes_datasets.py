@@ -1,16 +1,14 @@
-"""Tải dataset theo license, faucet demo, quản trị."""
+"""Tải dataset theo license, faucet demo. (Không còn vai trò quản trị — §3 #28.)"""
 from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, Request
+from fastapi import APIRouter, Path, Query, Request
 from fastapi.responses import Response
 
-from app.api.deps import ContainerDep, require_admin
+from app.api.deps import ContainerDep
 from app.core import ratelimit
 from app.core.ratelimit import limiter
-from app.schemas.admin import RelayerStatus, ReviewDecision, ReviewItem, SyncResponse
-from app.schemas.contribution import ContributionResult
 from app.schemas.dataset import (
     DownloadMessage,
     DownloadRequest,
@@ -58,41 +56,3 @@ def demo_faucet(request: Request, c: ContainerDep, body: FaucetRequest) -> Fauce
     """[CHỈ LOCAL + FUJI] mint mUSDC cho ví người mua demo; không tồn tại (404) khi NETWORK=mainnet."""
     assert c.faucet is not None
     return c.faucet.mint(body.address, body.amount_usdc)
-
-
-admin_router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
-
-
-@admin_router.post("/snapshot/{campaign_id}")
-def admin_snapshot(c: ContainerDep, campaign_id: CampaignId) -> SnapshotResponse:
-    """Đóng gói phiên bản, tính Merkle root, gọi publishSnapshot."""
-    return c.datasets.publish_snapshot(campaign_id)
-
-
-@admin_router.get("/review")
-def admin_review(c: ContainerDep) -> list[ReviewItem]:
-    """Hàng chờ vùng xám để duyệt tay (kèm bản ghi đạt nhưng chưa ghi được lên chain)."""
-    return c.admin.review_queue()
-
-
-@admin_router.get("/review/{contribution_id}/audio", response_class=Response)
-def admin_review_audio(c: ContainerDep, contribution_id: int) -> Response:
-    return Response(c.admin.review_audio(contribution_id), media_type="audio/wav")
-
-
-@admin_router.post("/review/{contribution_id}")
-def admin_review_decide(c: ContainerDep, contribution_id: int, body: ReviewDecision) -> ContributionResult:
-    return c.admin.decide(contribution_id, body.decision, body.note)
-
-
-@admin_router.get("/relayer")
-def admin_relayer(c: ContainerDep) -> RelayerStatus:
-    return c.admin.relayer_status()
-
-
-@admin_router.post("/sync")
-def admin_sync(c: ContainerDep) -> SyncResponse:
-    n = c.indexer.sync()
-    with c.sf() as s:
-        last = c.indexer.last_block(s)
-    return SyncResponse(processed_events=n, last_block=last)

@@ -72,6 +72,7 @@ class ChainClient:
         self.token_address = Web3.to_checksum_address(token)
         self.token: Contract = self.w3.eth.contract(address=self.token_address, abi=load_abi("MockUSDC"))
         self._chain_id: int | None = None
+        self._token_name: str | None = None
 
     # ------------------------------------------------------------------ cơ bản
 
@@ -191,3 +192,19 @@ class ChainClient:
 
     def token_balance(self, address: str) -> int:
         return int(self._call(self.token.functions.balanceOf(Web3.to_checksum_address(address))))
+
+    def token_name(self) -> str:
+        if self._token_name is None:
+            self._token_name = str(self._call(self.token.functions.name()))
+        return self._token_name
+
+    def token_nonce(self, owner: str) -> int:
+        """Nonce EIP-2612 của token (dùng cho chữ ký permit)."""
+        return int(self._call(self.token.functions.nonces(Web3.to_checksum_address(owner))))
+
+    def token_allowance(self, owner: str, spender: str) -> int:
+        return int(
+            self._call(
+                self.token.functions.allowance(Web3.to_checksum_address(owner), Web3.to_checksum_address(spender))
+            )
+        )

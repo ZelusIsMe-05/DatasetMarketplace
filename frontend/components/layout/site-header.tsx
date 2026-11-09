@@ -4,10 +4,9 @@ import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { network } from "@/lib/config";
 import { cn } from "@/lib/cn";
 import { Logo } from "@/components/brand/logo";
-import { ConnectWallet } from "@/components/wallet/connect-wallet";
+import { AccountMenu } from "@/features/auth/account-menu";
 import { BRAND } from "@/lib/brand";
 
 const NAV = [
@@ -70,12 +69,7 @@ export function SiteHeader() {
           ))}
         </nav>
         <div className="ml-auto hidden items-center gap-3 xl:flex">
-          {network.name !== "mainnet" && (
-            <span className="rounded-full border border-[#fde68a] bg-warning-soft px-2.5 py-1 text-xs font-semibold text-warning-ink" title="Môi trường thử nghiệm: tiền là mUSDC tự mint">
-              {network.name === "local" ? "Local · Anvil" : "Fuji testnet"}
-            </span>
-          )}
-          <ConnectWallet />
+          <AccountMenu />
         </div>
         <button
           type="button"
@@ -114,7 +108,7 @@ export function SiteHeader() {
                 </motion.div>
               ))}
               <div className="mt-3 border-t border-line pt-4">
-                <ConnectWallet fullWidth />
+                <AccountMenu fullWidth />
               </div>
             </div>
           </motion.nav>

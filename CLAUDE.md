@@ -2,9 +2,9 @@
 
 ## Nguồn sự thật
 - `DatasetMarketplace_Hackathon.md` là đặc tả bắt buộc. Không đổi nghiệp vụ, công thức giá/chia tiền, cấu trúc chữ ký
-  EIP-712 (domain `GiongQue`/`1`, typehash Consent/Revoke/Claim), thiết kế contract hay quy tắc dữ liệu.
+  EIP-712 (domain `DatasetMarketplace`/`1`, typehash Consent/Revoke/Claim), thiết kế contract hay quy tắc dữ liệu.
 - Mọi chỗ lệch so với đề xuất phải là thay đổi nhỏ nhất và được ghi vào `docs/implementation-plan.md` §3 kèm lý do.
-- Tên hiển thị "Dataset Marketplace" chỉ đặt ở `frontend/lib/brand.ts`; không đổi định danh kỹ thuật `GiongQue` / `giongque`
+- Tên hiển thị "Dataset Marketplace" chỉ đặt ở `frontend/lib/brand.ts`; không đổi định danh kỹ thuật `DatasetMarketplace` / `datasetmarketplace`
   (domain EIP-712, lệnh CLI, khóa localStorage).
 - Tiến độ thật ghi ở `IMPLEMENTATION_STATUS.md` (phân biệt implemented / tested / verified on local / pending Fuji).
 
@@ -12,7 +12,7 @@
 - `contracts/` Foundry (Solidity 0.8.28, OpenZeppelin 5.1.0 qua npm, forge-std ở `lib/`).
 - `backend/` FastAPI: `app/core` (config theo `NETWORK`, money, bảo mật), `app/models` (+ `alembic/`),
   `app/repositories`, `app/blockchain` (client, eip712, relayer, indexer), `app/qc`, `app/services`, `app/api`;
-  `cli/` (lệnh `giongque`); `tests/unit`, `tests/integration`.
+  `cli/` (lệnh `datasetmarketplace`); `tests/unit`, `tests/integration`.
 - `frontend/` Next.js 16 (Cache Components) — đọc `frontend/AGENTS.md` + `docs/frontend-design-system.md` trước khi sửa.
   `features/<vai-trò>` cho màn hình, `components/ui` cho design system; token màu/chữ/chuyển động chỉ đặt trong `app/globals.css`.
 - `seed/demo-campaign/` câu mẫu + điều khoản thật mà SeedDemo băm lên chain (giữ LF, không sửa byte tùy tiện).
@@ -34,7 +34,7 @@
 ```cmd
 scripts\test-all.bat                         :: forge test + pytest unit/QC thật + tích hợp (tự chạy anvil)
 scripts\start-anvil.bat  &  scripts\deploy-local.bat  &  scripts\start-backend.bat
-scripts\demo-local.bat                       :: e2e 51 kiểm tra + kịch bản 6.11 12 kiểm tra
+scripts\demo-local.bat                       :: e2e 52 kiểm tra + kịch bản 6.11 12 kiểm tra
 scripts\test-frontend.bat e2e                :: typecheck + lint + build + Playwright (cần stack đang chạy)
 cd frontend && npm run test:a11y             :: axe WCAG 2.2 AA
 ```

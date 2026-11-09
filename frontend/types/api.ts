@@ -21,6 +21,8 @@ export interface Health {
   database: "postgresql" | "sqlite";
   qc_model_loaded: boolean;
   dev_mode: boolean;
+  /** "local" (đĩa máy chủ) hoặc "b2:<bucket>/<tiền tố>" (Backblaze B2, implementation-plan §3 #29) */
+  storage: string;
 }
 
 export interface Fx {
@@ -87,6 +89,8 @@ export interface CampaignDetail extends CampaignSummary {
   terms_hash: string;
   metadata_uri: string;
   samples: string[];
+  /** Chủ chiến dịch duyệt bản ghi vùng xám — công khai để người ghi âm biết (implementation-plan §3 #28). */
+  review: ReviewStats;
   latest_snapshot: SnapshotRef | null;
   explorer_url: string | null;
 }
@@ -100,15 +104,90 @@ export interface Terms {
 }
 
 /** Dữ liệu EIP-712 dạng eth_signTypedData_v4, ký trực tiếp bằng viem. */
+export interface TypedDataPayload {
+  types: Record<string, { name: string; type: string }[]>;
+  primaryType:
+    | "Consent" | "Revoke" | "Claim" | "CreateCampaign" | "Buy" | "Withdraw" | "WithdrawSeed" | "PublishSnapshot" | "Permit";
+  domain: { name: string; version: string; chainId: number; verifyingContract: `0x${string}` };
+  message: Record<string, string | number>;
+}
+
 export interface TypedDataResponse {
-  typed_data: {
-    types: Record<string, { name: string; type: string }[]>;
-    primaryType: "Consent" | "Revoke" | "Claim";
-    domain: { name: string; version: string; chainId: number; verifyingContract: `0x${string}` };
-    message: Record<string, string | number>;
-  };
+  typed_data: TypedDataPayload;
   nonce: number;
   deadline: number;
+}
+
+// ------------------------------------------------------------ nền tảng trả phí mạng hộ (sponsored)
+
+/** Bảng phí xử lý hiện hành (đã gồm phí mạng) — GET /fees. */
+export interface FeeSchedule {
+  mode: string;
+  create: Money;
+  buy: Money;
+  withdraw: Money;
+  claim: Money;
+}
+
+/** Chữ ký EIP-2612 cho phép hợp đồng trừ đúng `value` (domain của token). */
+export interface PermitSign {
+  typed_data: TypedDataPayload;
+  value: number;
+  nonce: number;
+  deadline: number;
+}
+
+/** Hóa đơn trước khi ký: số tiền chính, phí xử lý, tổng; kèm dữ liệu cần ký nếu làm được. */
+export interface SponsoredQuote {
+  action: "create" | "buy" | "withdraw" | "withdraw_seed";
+  payer: string;
+  amount: Money;
+  fee: Money;
+  total: Money;
+  balance: Money | null;
+  can_submit: boolean;
+  reason: string | null;
+  sign: TypedDataResponse | null;
+  permit: PermitSign | null;
+}
+
+export interface PermitSubmit {
+  value: number;
+  deadline: number;
+  signature: string;
+}
+
+export interface SponsoredCreateRequest {
+  fee: number;
+  deadline: number;
+  signature: string;
+  permit: PermitSubmit | null;
+}
+
+export interface SponsoredBuyRequest extends SponsoredCreateRequest {
+  buyer: string;
+  max_price: number;
+}
+
+export interface SponsoredWithdrawRequest {
+  account: string;
+  fee: number;
+  deadline: number;
+  signature: string;
+}
+
+export interface SponsoredSeedWithdrawRequest {
+  fee: number;
+  deadline: number;
+  signature: string;
+}
+
+export interface SponsoredResult {
+  action: string;
+  tx_hash: string;
+  amount: Money;
+  fee: Money;
+  campaign_id: number | null;
 }
 
 export interface ConsentResponse {
@@ -315,7 +394,12 @@ export interface Me {
   email: string;
   wallet_address: `0x${string}`;
   auth_provider: "google" | "dev";
+  /** Cài đặt tài khoản (implementation-plan §3 #31); null ⇒ hiển thị email */
+  display_name: string | null;
+  avatar: AvatarKey;
 }
+
+export type AvatarKey = "auto" | "sunset" | "ocean" | "forest" | "berry" | "amber" | "slate" | "rose";
 
 export interface FaucetResult {
   address: string;
@@ -335,30 +419,43 @@ export interface SnapshotResult {
   status: string;
 }
 
+// ------------------------------------------------------------ chủ chiến dịch sở hữu dữ liệu (§3 #28, không có admin)
+
+/** Bản ghi vùng xám chờ CHỦ CHIẾN DỊCH duyệt — GET /creator/review. */
 export interface ReviewItem {
   id: number;
   campaign_id: number;
   address: string;
   prompt_text: string;
-  status: "gray" | "pending_chain";
+  status: "gray";
   duration_sec: number;
   weight_sec: number;
   qc: QcReport | null;
-  audio_url: string;
-  error: string | null;
+  /** Đường dẫn API để nghe (cần phiên đăng nhập của chủ chiến dịch) */
+  audio_path: string;
   created_at: number;
+  /** Quá thời điểm này chưa duyệt thì nền tảng tự duyệt; null = chờ mãi */
+  auto_approve_at: number | null;
 }
 
-export interface RelayerStatus {
-  relayer_address: string;
-  qc_oracle_address: string;
-  onchain_qc_oracle: string;
-  qc_oracle_matches: boolean;
-  relayer_balance_avax: number;
-  qc_oracle_balance_avax: number;
-  low_balance: boolean;
-  fee_collector: string;
-  claim_fee: Money;
-  fee_collector_withdrawable: Money;
-  recent: { id: number; kind: string; status: string; tx_hash: string | null; error: string | null; created_at: number }[];
+export interface ReviewStats {
+  pending: number;
+  approved: number;
+  auto_approved: number;
+  rejected: number;
+}
+
+/** Bản tóm tắt phiên bản dataset sắp công bố + dữ liệu PublishSnapshot để chủ chiến dịch ký. */
+export interface SnapshotQuote {
+  campaign_id: number;
+  version: number;
+  leaf_count: number;
+  total_sec: number;
+  merkle_root: string;
+  uri: string;
+  latest_version: number | null;
+  /** published | stale (chứa bản ghi đã thu hồi) | null (chưa công bố lần nào) */
+  latest_status: string | null;
+  changed: boolean;
+  sign: TypedDataResponse;
 }

@@ -90,6 +90,10 @@
 
 - **Chain giữ tiền, quyền và bằng chứng. Server giữ dữ liệu.** Audio và thông tin cá nhân không bao giờ lên chain.
 - **Người đóng góp không cần biết blockchain:** đăng nhập Google, ví tạo sẵn trong trình duyệt, không cần AVAX.
+- **Không ai cần AVAX:** mọi thao tác (đồng thuận, rút tiền, thu hồi, tạo chiến dịch, mua dataset, rút doanh thu) người dùng
+  chỉ **ký**; nền tảng gửi giao dịch và trả phí mạng, rồi thu một **phí xử lý** nhỏ bằng chính tiền trong app, hiện bằng VNĐ
+  trên hóa đơn trước khi ký (mục 8.4).
+  Ai đã có MetaMask/Core thì dùng luôn ví đó; ví trình duyệt **nâng cấp** lên MetaMask được bằng file sao lưu (cùng địa chỉ ví) — xem "Hai cấp ví" ở mục 5.
 - **Mọi quy tắc tiền bạc nằm trong contract**, ai cũng kiểm tra được.
 
 ---
@@ -98,13 +102,41 @@
 
 | Vai trò | Là ai | Làm gì trên trang |
 |---|---|---|
-| **Người tạo chiến dịch** | Startup, công ty, lab, nhóm nghiên cứu | Đặt hàng dataset: mô tả, câu mẫu, mục tiêu, giá, hạn; có thể nạp quỹ mồi |
+| **Người tạo chiến dịch** | Startup, công ty, lab, nhóm nghiên cứu | Đặt hàng dataset: mô tả, câu mẫu, mục tiêu, giá, hạn; có thể nạp quỹ mồi. **Chủ dữ liệu** của chiến dịch: duyệt bản ghi vùng xám, ký công bố phiên bản dataset |
 | **Người đóng góp** | Người bình thường (đông) | Ký đồng thuận, đọc câu, ghi âm, rút tiền, thu hồi |
 | **Người mua** | Người làm AI (ít); thường người tạo là người mua đầu tiên | Mua dataset, tải các phiên bản |
-| **QC oracle** | Server của đội | Chấm bản ghi, ghi nhận bản ghi đạt lên chain, công bố phiên bản dataset |
-| **Nền tảng** | Đội phát triển | Nhận phí nền tảng |
+| **QC oracle** | Server của đội | Chấm bản ghi, ghi nhận bản ghi đạt (hoặc đã được người tạo duyệt) lên chain |
+| **Nền tảng** | Đội phát triển | Nhận phí nền tảng; vận hành server QC + relayer trả gas. **Không** quyết định dữ liệu của chiến dịch |
 
 > Về kỹ thuật, một ví có thể đảm nhận nhiều vai trò. Trên thực tế, người đóng góp và người mua là hai nhóm khác nhau.
+>
+> **Không có vai trò quản trị (admin)** (implementation-plan §3 #28): web chỉ thu thập giọng nói và trả tiền minh bạch;
+> dataset thuộc quyền người tạo chiến dịch. Duyệt bản ghi vùng xám và công bố phiên bản dataset đều do người tạo làm
+> trong "Chiến dịch của bạn", bằng phiên đăng nhập + chữ ký ví của chính họ.
+
+### Hai cấp ví
+
+Contract chỉ biết **địa chỉ ví**: tiền, bản ghi và quyền thu hồi gắn với địa chỉ, không gắn với loại ví. Giao diện có hai cấp:
+
+| Cấp | Ví | Dùng được | Phí mạng |
+|---|---|---|---|
+| Cơ bản | **Ví trong trình duyệt** (tạo ở `/earn`, khóa mã hóa bằng mật khẩu, lưu trên máy) | Chỉ khu vực ghi âm: đồng thuận, ghi âm, rút tiền, thu hồi | Không cần AVAX: chỉ ký, relayer trả |
+| Cao nhất | **MetaMask / Core** | Mọi vai trò: ghi âm, rút tiền, thu hồi, tạo chiến dịch, mua dataset | Không cần AVAX: mọi thao tác chỉ ký, relayer trả phí mạng. Tạo chiến dịch, mua, rút doanh thu/quỹ mồi: hóa đơn hiện **phí xử lý** (VNĐ) trước khi ký |
+
+- **Đăng nhập bằng Gmail, ví đi theo Gmail** (implementation-plan §3 #27): nút trên header là **Đăng nhập** (không có nút
+  "kết nối ví" riêng). **Lần đầu**, Gmail chưa gắn ví ⇒ chọn ví (MetaMask/Core, hoặc ví trình duyệt ở `/earn`) và ký xác
+  nhận một lần; máy chủ lưu Gmail ↔ ví. **Các lần sau** chỉ cần Gmail: web tự kết nối MetaMask vào đúng ví đã gắn (hoặc
+  mở khóa ví trình duyệt); MetaMask đang chọn tài khoản khác ⇒ hiện cảnh báo và nút mở bảng chọn tài khoản. **Mỗi email
+  một ví** áp dụng cho cả hai cấp.
+- **Sao lưu và nâng cấp:** ví trình duyệt xuất được **file keystore V3** (chuẩn ví Ethereum/Avalanche, mã hóa bằng chính
+  mật khẩu ví; không chứa mật khẩu hay dữ liệu cá nhân). Nạp file vào MetaMask (Import account → JSON File) là có **chính ví đó**
+  trong MetaMask — cùng địa chỉ nên email, tiền đã kiếm, phần chia các lần bán sau và quyền thu hồi giữ nguyên, phiên đăng nhập
+  dùng tiếp. Không chuyển sang một ví MetaMask *khác*: contract không chuyển được bản ghi/tiền chia sau này sang địa chỉ khác.
+- Giao diện nhắc tải file sao lưu (thẻ ở trang Tổng quan, nhắc lại trong hộp thoại rút tiền khi chưa sao lưu): xóa dữ liệu
+  trình duyệt mà không có file thì mất ví.
+- Gmail gắn với ví trình duyệt mà người dùng vào trang cần MetaMask (tạo chiến dịch, mua) ⇒ giao diện hướng dẫn nâng cấp
+  (nạp chính ví đó vào MetaMask). API vẫn trả `409 email_bound` (kèm `details.bound_wallet`) nếu có ai cố gắn ví khác cho
+  một email đã gắn ví.
 
 ### Ba loại thời hạn
 
@@ -130,8 +162,9 @@ sequenceDiagram
     participant BE as Server (QC + relayer)
     participant SC as Contract (Fuji)
 
-    Creator->>SC: createCampaign(mục tiêu, giá, tỷ lệ chia, hạn, hash câu mẫu)
-    User->>FE: Đăng nhập Google, tạo ví trong trình duyệt
+    Creator->>FE: Ký CreateCampaign (mục tiêu, giá, tỷ lệ chia, hạn, hash câu mẫu, phí xử lý) + permit
+    BE->>SC: createCampaignWithSig (relayer trả gas, thu quỹ mồi + phí xử lý)
+    User->>FE: Đăng nhập Google; lần đầu gắn ví (tạo ví trên trình duyệt hoặc MetaMask/Core, ký xác nhận)
     User->>FE: Ký đồng thuận (EIP-712)
     FE->>BE: Gửi chữ ký
     BE->>SC: giveConsentWithSig (relayer trả gas)
@@ -139,13 +172,18 @@ sequenceDiagram
     FE->>BE: Upload audio + prompt token
     BE->>BE: QC: VAD, độ dài, forced alignment, CER
     BE->>SC: registerContribution(commitment, số giây)
-    Buyer->>SC: buy(campaignId, maxPrice)
+    Creator->>FE: Nghe lại bản ghi vùng xám: duyệt (⇒ registerContribution) / loại kèm lý do
+    Creator->>FE: Xem bản tóm tắt phiên bản, ký PublishSnapshot (Merkle root)
+    BE->>SC: publishSnapshotWithSig (relayer trả gas)
+    Buyer->>FE: Ký Buy (campaignId, maxPrice, phí xử lý) + permit
+    BE->>SC: buyWithSig (relayer trả gas, thu giá + phí xử lý)
     SC->>SC: Chia tiền: người đóng góp / người tạo / nền tảng
     User->>FE: Ký yêu cầu rút tiền (chấp nhận phí tối đa)
     BE->>SC: claimWithSig (relayer trả gas, thu phí nhỏ bằng tiền trong app)
     User->>FE: Ký thu hồi
     BE->>SC: revokeWithSig
-    BE->>BE: Xóa audio + salt
+    BE->>BE: Xóa audio + salt, khóa phiên bản dataset chứa bản ghi
+    Creator->>FE: Ký công bố phiên bản mới (không còn bản ghi đã thu hồi)
 ```
 
 ### 6.2. Tạo chiến dịch
@@ -165,6 +203,15 @@ sequenceDiagram
 
 **Quỹ mồi** giải quyết bài toán con gà và quả trứng: những người đóng góp đầu tiên được trả ngay, trước khi có người mua.
 
+**Nhập liệu trên web:**
+- Bộ câu mẫu gõ trực tiếp hoặc **nhập từ file `.txt`** (UTF-8, mỗi dòng một câu, tối đa 500 KB). File được đọc ngay trên
+  trình duyệt, không tải lên server; sau khi nhập vẫn sửa được trong ô câu mẫu và được kiểm tra theo §10.2 như khi gõ.
+- Số nhập theo kiểu Việt Nam: `26.000.000` (dấu chấm phân cách hàng nghìn khi đi theo nhóm 3 chữ số), `0,5` hoặc `0.5` (thập phân).
+- Bước "Xem trước & ký" hiện **hóa đơn bằng VNĐ**: quỹ mồi chuyển vào hợp đồng (nếu có), **phí xử lý** (đã gồm phí mạng
+  nền tảng trả hộ, mặc định ≈ 13.000 ₫), **tổng trừ từ ví** và **số dư ví hiện có**; thiếu tiền thì khóa nút ký (local/Fuji
+  có nút nhận mUSDC thử). Người tạo **chỉ ký** trong ví, không cần AVAX: ký cho phép trừ đúng số tiền (permit EIP-2612, chỉ
+  khi hạn mức chưa đủ) rồi ký `CreateCampaign`; relayer gọi `createCampaignWithSig` (mục 9, implementation-plan §3 #25).
+
 ### 6.3. Đồng thuận
 
 - Người dùng đọc điều khoản (mục đích sử dụng, license, quyền thu hồi, cách dữ liệu được lưu và xóa).
@@ -181,8 +228,10 @@ flowchart LR
     C --> D[Upload audio + token]
     D --> E{QC}
     E -- Đạt --> F[registerContribution on-chain]
-    E -- Vùng xám --> G[Hàng chờ duyệt tay]
+    E -- Vùng xám --> G[Hàng chờ của người tạo chiến dịch]
     E -- Trượt --> H[Báo lý do, đọc lại]
+    G -- Duyệt / quá hạn tự duyệt --> F
+    G -- Loại, bắt buộc ghi lý do --> J[Xóa audio, người đóng góp thấy lý do]
     F --> I[Cộng tiền mồi nếu có]
 ```
 
@@ -190,6 +239,12 @@ flowchart LR
 - **Chỉ ghi âm trực tiếp**, không cho upload file.
 - Mỗi người không đọc lại câu đã đọc.
 - Bản ghi đạt: server sinh `salt` ngẫu nhiên, tính `commitment = keccak256(audioBytes ‖ salt)`, gọi `registerContribution`. **Trọng số = số giây hợp lệ** (làm tròn xuống).
+- **Vùng xám do người tạo chiến dịch duyệt** (implementation-plan §3 #28), trong "Chiến dịch của bạn": nghe lại audio (chỉ
+  người tạo của đúng chiến dịch đó nghe được), xem chỉ số QC. **Duyệt** ⇒ `registerContribution` + tiền mồi như bản ghi đạt;
+  **Loại** ⇒ bắt buộc ghi lý do (người đóng góp thấy trong "Bản ghi của tôi"), audio bị xóa.
+- Người tạo có lợi ích ngược (không duyệt thì khỏi trả tiền mồi), nên: quá `REVIEW_AUTO_APPROVE_HOURS` (mặc định 72 giờ;
+  0 = chờ mãi) mà chưa quyết định thì nền tảng **tự duyệt**; số bản ghi duyệt / tự duyệt / loại / đang chờ **công khai**
+  trên trang chiến dịch để người ghi âm biết người tạo duyệt thế nào.
 
 ### 6.5. Tiến độ và giá
 
@@ -215,11 +270,18 @@ Giá **cố định bằng USDC trên chain**; số VNĐ hiển thị có dấu 
 ### 6.6. Mua dataset
 
 1. Người mua xem trang chiến dịch: tiến độ, giá, số người đóng góp, nghe mẫu.
-2. `approve` stablecoin rồi gọi `buy(campaignId, maxPrice)`.
+2. Khung mua hiện **hóa đơn bằng VNĐ**: giá theo tiến độ + **phí xử lý** (đã gồm phí mạng, mặc định ≈ 13.000 ₫) = tổng
+   thanh toán. Người mua đăng nhập Gmail trên web như mọi vai trò (ví đi theo Gmail, §5) rồi **chỉ ký** (không cần AVAX; API mua tự nó chỉ cần chữ ký): permit cho phép trừ giá + phí (khi hạn mức chưa đủ)
+   rồi `Buy(campaignId, buyer, maxPrice, fee, …)` với `maxPrice` đúng bằng giá đang hiển thị; relayer gọi `buyWithSig`.
+   Phí xử lý không tính vào doanh thu chia cho các bên. Vẫn có thể tự gửi `approve` + `buy(campaignId, maxPrice)` (CLI).
 3. Contract ghi **license**: thời điểm mua, tiến độ lúc mua, giá đã trả.
 4. Quyền lợi: tải bản hiện tại và **mọi bản cập nhật** sau đó.
 5. Tải dữ liệu: người mua ký một thông điệp chứng minh sở hữu ví; server kiểm tra license on-chain rồi trả file. **File luôn loại bỏ bản ghi đã thu hồi.**
-6. Mỗi phiên bản dataset có **Merkle root** công bố on-chain (`publishSnapshot`), người mua đối chiếu được file nhận về.
+6. Mỗi phiên bản dataset có **Merkle root** công bố on-chain, người mua đối chiếu được file nhận về. Phiên bản **do người tạo
+   chiến dịch công bố** (dataset thuộc quyền của họ; nền tảng không công bố thay — implementation-plan §3 #28): xem bản tóm
+   tắt (số bản ghi, tổng giây, Merkle root) rồi ký EIP-712 `PublishSnapshot(campaignId, merkleRoot, uri, nonce, deadline)`;
+   relayer gọi `publishSnapshotWithSig` (người tạo vẫn tự gọi được `publishSnapshot`). Chưa có phiên bản hợp lệ ⇒ người mua
+   chưa tải được.
 
 ### 6.7. Chia doanh thu
 
@@ -229,14 +291,17 @@ Giá **cố định bằng USDC trên chain**; số VNĐ hiển thị có dấu 
 - **Rút tiền có hai cách:**
   - `claim(campaignId)`: người đóng góp tự gửi giao dịch, **không mất phí**, nhưng phải có AVAX để trả gas.
   - `claimWithSig(...)` (mặc định trong app): người đóng góp **chỉ ký**, relayer gửi giao dịch và trả gas AVAX, rồi **thu lại một khoản phí nhỏ bằng chính tiền trong app** (ví dụ 0,1 USDC ≈ 2.600 ₫). Người dùng ký kèm `maxFee` nên phí không thể bị tăng sau khi ký.
+- **Người tạo rút phần doanh thu** (`withdrawWithSig`) và **quỹ mồi còn dư sau hạn** (`withdrawSeedWithSig`) cũng chỉ ký;
+  phí xử lý (mặc định 0,1 USDC ≈ 2.600 ₫) trừ vào số tiền rút. Người tạo vẫn có thể tự gọi `withdraw` / `withdrawSeed`.
 
 ### 6.8. Thu hồi đồng thuận
 
 1. Người dùng ký `Revoke(contributionId, nonce, deadline)` (hoặc tự gọi `revoke` nếu có gas).
 2. Contract: chốt phần tiền đã kiếm (vẫn rút được), trừ trọng số, ghi `revokedAt`, phát sự kiện `ConsentRevoked`.
 3. Tiến độ giảm, giá giảm.
-4. Server xóa audio và salt. Hash trên chain không còn liên kết được với giọng nói nào.
-5. Phiên bản dataset tiếp theo không còn bản ghi này.
+4. Server xóa audio và salt ngay. Hash trên chain không còn liên kết được với giọng nói nào.
+5. Mọi phiên bản dataset chứa bản ghi này bị **khóa** (không tải được nữa). Người tạo chiến dịch ký công bố phiên bản mới,
+   không còn bản ghi này; nền tảng không tự công bố thay (implementation-plan §3 #28).
 6. License quy định: người mua không dùng bản ghi đã thu hồi cho **lần huấn luyện mới** sau thời điểm thu hồi. Thu hồi không hồi tố với mô hình đã huấn luyện.
 
 **Câu trả lời cho câu hỏi "rút tiền rồi mới thu hồi thì sao?":** người đóng góp giữ tiền đã nhận, nhưng mất toàn bộ thu nhập tương lai từ bản ghi đó. Không cần cơ chế đòi tiền.
@@ -263,6 +328,9 @@ stateDiagram-v2
         [*] --> DaNop
         DaNop --> HopLe: QC đạt
         DaNop --> BiLoai: QC trượt
+        DaNop --> VungXam: QC chưa chắc chắn
+        VungXam --> HopLe: người tạo duyệt / quá hạn tự duyệt
+        VungXam --> BiLoai: người tạo loại (kèm lý do)
         HopLe --> DaThuHoi: thu hồi
     }
 ```
@@ -298,6 +366,10 @@ Ví dụ này được dùng làm test chính của contract (mục 9.4), với 
 - **Nonce** chống phát lại chữ ký; **deadline** giới hạn thời gian hiệu lực.
 - **Relayer:** server nhận chữ ký, tự gửi giao dịch và trả gas. Contract dùng `ecrecover` để xác minh đúng người dùng đã ký. Người dùng không cần AVAX.
 - Rút tiền qua relayer cũng dùng chữ ký (`Claim(campaignId, contributor, maxFee, nonce, deadline)`), để relayer không tự ý rút hộ và trừ phí khi người dùng chưa yêu cầu.
+- Tạo chiến dịch, mua và rút doanh thu/quỹ mồi dùng cùng cơ chế (`CreateCampaign`, `Buy`, `Withdraw`, `WithdrawSeed`), mỗi
+  chữ ký chứa **đúng số phí xử lý** người dùng thấy trên hóa đơn. Muốn hợp đồng trừ token mà người dùng không gửi giao dịch
+  `approve`, ví ký thêm **permit EIP-2612** (`Permit(owner, spender, value, nonce, deadline)` trên domain của token; USDC thật
+  có sẵn) — hợp đồng gọi `permit` trong cùng giao dịch, bọc try/catch để không bị chặn nếu ai đó gửi trước chữ ký đó.
 
 ### 7.3. Cam kết băm có salt (hash commitment)
 
@@ -373,27 +445,27 @@ S: thay thế, D: xóa, I: chèn, N: số đơn vị trong câu đúng. Với ti
 ```mermaid
 flowchart TB
     subgraph Browser["Trình duyệt"]
-        FE1["Màn Kiếm tiền<br/>(ví trong trình duyệt, ghi âm)"]
-        FE2["Màn Đặt hàng / Mua<br/>(Core / MetaMask)"]
+        FE1["Màn Kiếm tiền<br/>(ví trong trình duyệt hoặc Core / MetaMask, ghi âm)"]
+        FE2["Màn Đặt hàng / Mua / Chiến dịch của bạn<br/>(Core / MetaMask)"]
     end
     subgraph Server["Server (CPU)"]
         API["FastAPI"]
         QC["QC: VAD + forced alignment + CER"]
         REL["Relayer (ví nóng, trả gas)"]
         DB[("SQLite / Postgres")]
-        ST[("Kho audio riêng tư")]
+        ST[("Kho audio riêng tư<br/>(đĩa server hoặc Backblaze B2)")]
     end
     subgraph Fuji["Avalanche Fuji C-Chain"]
         SC["VoiceCampaigns.sol"]
         TK["Stablecoin test (ERC-20)"]
     end
     FE1 -- audio, chữ ký --> API
-    FE2 -- buy, createCampaign --> SC
+    FE2 -- ký CreateCampaign / Buy / Withdraw / PublishSnapshot + permit --> API
     API --> QC
     API --> DB
     API --> ST
     API --> REL
-    REL -- registerContribution, consent, revoke, claimWithSig --> SC
+    REL -- registerContribution, consent, revoke, claimWithSig, createCampaignWithSig, buyWithSig, withdrawWithSig, publishSnapshotWithSig --> SC
     SC -- chuyển tiền --> TK
     API -- đọc license, sự kiện --> SC
 ```
@@ -407,19 +479,19 @@ flowchart TB
 | Tiền trong app | Local/Fuji: `MockUSDC` tự deploy (6 decimals). Mainnet: USDC thật | Testnet tự mint; mainnet có giá trị thật, đổi được ra AVAX |
 | Hiển thị VNĐ | Tỷ giá cố định (local/Fuji), nguồn tỷ giá qua HTTP có cache (mainnet) | Người dùng Việt chỉ thấy VNĐ |
 | Frontend | Next.js (hoặc Vite + React), viem, wagmi, Tailwind | Hệ sinh thái EVM phổ biến |
-| Ví người đóng góp | Ví tạo trong trình duyệt (viem `privateKeyToAccount`), khóa mã hóa bằng mật khẩu | Không cần cài ví, không cần AVAX |
-| Ví người mua | Core / MetaMask | Người mua là tổ chức, quen ví |
+| Ví người đóng góp | Ví tạo trong trình duyệt (viem `privateKeyToAccount`), khóa mã hóa bằng mật khẩu; sao lưu bằng file keystore V3 (PBKDF2 + AES-128-CTR, WebCrypto). Hoặc Core / MetaMask | Không cần cài ví, không cần AVAX; nạp file vào MetaMask là nâng cấp mà giữ nguyên địa chỉ |
+| Ví người mua / người tạo | Core / MetaMask (cùng ví đó cũng ghi âm được) | Người mua là tổ chức, quen ví |
 | Backend | Python, FastAPI, web3.py | Cùng ngôn ngữ với phần AI |
 | QC | wav2vec2 tiếng Việt (CTC), torchaudio `forced_align`, Silero VAD, jiwer | Chạy CPU, không cần GPU khi phục vụ |
 | ASR hiển thị (tùy chọn) | PhoWhisper (tiny/base) qua faster-whisper int8 | Cho người dùng thấy máy nghe được gì |
-| Lưu trữ | Ổ đĩa server hoặc bucket riêng tư; SQLite (MVP) | Đơn giản |
+| Lưu trữ | Audio: ổ đĩa server (mặc định) hoặc **Backblaze B2** khi đặt `B2_BUCKET` (bucket riêng tư, mã hóa phía máy chủ SSE-B2 AES-256, implementation-plan §3 #29). Database: SQLite hoặc PostgreSQL (Neon) | Đơn giản; B2 rẻ, API gốc gọn, xóa thật được mọi phiên bản file khi thu hồi |
 | Đăng nhập | Google OAuth | Mỗi email một ví, chống tạo nhiều tài khoản |
 | Hosting | VPS 2–4 vCPU (hoặc Hugging Face Spaces CPU) + Vercel cho frontend | GPU free-tier chỉ dùng để phát triển, không chạy server 24/7 được |
 
 ### 8.3. Cấu trúc repo
 
 ```
-giongque/
+datasetmarketplace/
 ├── contracts/                     # Foundry
 │   ├── src/VoiceCampaigns.sol     # [DEPLOY] contract chính, deploy ở mọi môi trường
 │   ├── src/mocks/MockUSDC.sol     # [CHỈ LOCAL + FUJI] token giả lập, cấm lên mainnet
@@ -455,8 +527,8 @@ giongque/
 
 | Loại | Vai trò | Ai thấy | Local | Fuji (lúc thi) | Mainnet |
 |---|---|---|---|---|---|
-| **USDC** (lớp lưu trữ của "tiền trong app") | Mọi khoản có giá trị: giá mua, chia doanh thu, quỹ mồi, phí rút hộ | Người dùng thấy dưới dạng **VNĐ** | `MockUSDC`, tự mint | `MockUSDC`, tự mint | USDC thật |
-| **AVAX** | **Chỉ trả gas** cho validator | Người dùng không thấy | Có sẵn trên Anvil | Đội xin từ **Core faucet** | Mua bằng tiền thật |
+| **USDC** (lớp lưu trữ của "tiền trong app") | Mọi khoản có giá trị: giá mua, chia doanh thu, quỹ mồi, phí rút hộ, phí xử lý | Người dùng thấy dưới dạng **VNĐ** | `MockUSDC` (có permit EIP-2612), tự mint | `MockUSDC`, tự mint | USDC thật |
+| **AVAX** | **Chỉ trả gas** cho validator | **Không người dùng nào thấy**: relayer trả cho mọi thao tác; người dùng chỉ thấy **phí xử lý** bằng VNĐ | Có sẵn trên Anvil | Đội xin từ **Core faucet** | Mua bằng tiền thật |
 
 **Vì sao không lưu thẳng VNĐ trên chain?** Không có stablecoin VNĐ phổ biến để dùng trên mainnet. Lưu bằng USDC thì contract **không phải sửa** khi lên mainnet, chỉ đổi địa chỉ token.
 
@@ -465,8 +537,21 @@ giongque/
 - Mọi số tiền hiển thị bằng VNĐ có dấu "≈", kèm dòng phụ nhỏ "650 USDC trên Avalanche" để minh bạch.
 - **Tỷ giá:** local và Fuji dùng **tỷ giá cố định cấu hình được** (mặc định 26.000 ₫/USDC, chỉ là giả định cho demo); mainnet lấy tỷ giá qua HTTP, cache 5 phút.
 - **Phí rút hộ** cũng hiển thị bằng VNĐ: "Phí rút: ≈ 2.600 ₫".
+- **Phí xử lý** (đã gồm phí mạng nền tảng trả hộ) hiện bằng VNĐ trên mọi hóa đơn cần trừ tiền:
 
-**Vì sao vẫn cần AVAX?** Gas là luật của tầng mạng Avalanche và trả cho validator bằng AVAX; USDC chỉ là một contract ở tầng ứng dụng, mạng không nhận nó làm phí. Token tự mint được thì không có giá trị, nên không thể dùng để trả gas hay đổi ra AVAX. Thiết kế của ta: **relayer trả AVAX ở hậu trường, rồi thu lại phí nhỏ bằng tiền trong app**. Trên mainnet, relayer định kỳ đổi phí USDC thu được sang AVAX trên DEX để tự nạp gas.
+  | Thao tác | Phí xử lý mặc định | Cấu hình |
+  |---|---|---|
+  | Đăng nhập, ký đồng thuận, ghi âm, thu hồi | Miễn phí | — |
+  | Người đóng góp rút tiền (`claimWithSig`) | 0,1 USDC ≈ 2.600 ₫ | `claimFee` on-chain (`CLAIM_FEE` khi deploy) |
+  | Người tạo rút doanh thu / quỹ mồi còn dư | 0,1 USDC ≈ 2.600 ₫ | `RELAY_FEE_WITHDRAW_USDC` |
+  | Tạo chiến dịch | 0,5 USDC ≈ 13.000 ₫ | `RELAY_FEE_CREATE_USDC` |
+  | Mua dataset | 0,5 USDC ≈ 13.000 ₫ (không tính vào doanh thu chia) | `RELAY_FEE_BUY_USDC` |
+
+  Backend báo giá, người dùng ký **đúng số phí** đó, hợp đồng chỉ kiểm tra chữ ký nên đổi cách tính phí không phải deploy
+  lại. Hiện dùng **phí cố định**; dự kiến (khi có AVAX Fuji) chuyển sang **phí = tiền gas thực tế + % biên, có mức tối
+  thiểu**, quy AVAX → USDC bằng bảng giá Chainlink AVAX/USD — kế hoạch ở implementation-plan §3 #25.
+
+**Vì sao vẫn cần AVAX?** Gas là luật của tầng mạng Avalanche và trả cho validator bằng AVAX; USDC chỉ là một contract ở tầng ứng dụng, mạng không nhận nó làm phí. Token tự mint được thì không có giá trị, nên không thể dùng để trả gas hay đổi ra AVAX. Thiết kế của ta: **relayer trả AVAX ở hậu trường cho mọi thao tác, rồi thu lại phí xử lý bằng tiền trong app**. Trên mainnet, relayer định kỳ đổi phí USDC thu được sang AVAX trên DEX để tự nạp gas.
 
 **Ai cần AVAX trên Fuji:**
 
@@ -474,8 +559,9 @@ giongque/
 |---|---|---|
 | Ví deploy | Có | Core faucet |
 | Ví relayer / QC oracle (có thể dùng chung) | Có | Core faucet |
-| Người đóng góp | **Không** (relayer trả hộ) | — |
-| Người mua demo / giám khảo | Có, một ít | Ví đội chuyển sẵn qua `SeedDemo.s.sol` |
+| Người đóng góp (ví trình duyệt hoặc MetaMask) | **Không** (relayer trả hộ mọi thao tác) | — |
+| Người tạo chiến dịch, người mua, giám khảo | **Không** (chỉ ký; relayer trả). Chỉ cần mUSDC: nút "Nhận mUSDC thử nghiệm" | — |
+| Người mua demo của CLI (tự gửi `approve` + `buy`) | Có, một ít | Ví đội chuyển sẵn qua `SeedDemo.s.sol` |
 
 ---
 
@@ -487,18 +573,31 @@ Contract chính `VoiceCampaigns` (gộp quản lý chiến dịch, đồng thu�
 
 | Nhóm | Hàm | Ai gọi | Ai trả gas AVAX |
 |---|---|---|---|
-| Chiến dịch | `createCampaign`, `withdrawSeed` | Người tạo (Core/MetaMask) | Người tạo |
+| Chiến dịch | `createCampaign`, `withdrawSeed` / `createCampaignWithSig`, `withdrawSeedWithSig` | Người tạo / relayer | Người tạo / **relayer** (thu phí xử lý) |
 | Đọc | `isCollecting`, `progressBps`, `currentPrice`, `getCampaign`, `pendingReward` | Ai cũng đọc được | Không tốn gas |
 | Đồng thuận | `giveConsent` / `giveConsentWithSig` | Người đóng góp / relayer | Người đóng góp / **relayer** |
 | Đóng góp | `registerContribution` | Chỉ QC oracle | QC oracle |
 | Thu hồi | `revoke` / `revokeWithSig` | Người đóng góp / relayer | Người đóng góp / **relayer** |
-| Mua | `buy(campaignId, maxPrice)` | Người mua | Người mua |
+| Mua | `buy(campaignId, maxPrice)` / `buyWithSig` | Người mua / relayer | Người mua / **relayer** (thu phí xử lý) |
 | Rút tiền | `claim` (miễn phí) / `claimWithSig` (trừ phí nhỏ bằng tiền trong app) | Người đóng góp / relayer | Người đóng góp / **relayer** |
-| Rút phần chia | `withdraw` | Người tạo, nền tảng, ví nhận phí | Chính họ |
-| Phiên bản | `publishSnapshot` | Chỉ QC oracle | QC oracle |
-| Quản trị | `setQcOracle`, `setClaimFee` | Owner | Owner |
+| Rút phần chia | `withdraw` / `withdrawWithSig` | Người tạo, nền tảng, ví nhận phí / relayer | Chính họ / **relayer** (trừ phí xử lý) |
+| Phiên bản | `publishSnapshot` / `publishSnapshotWithSig` | **Chỉ người tạo của chiến dịch đó** / relayer (chữ ký của người tạo) | Người tạo / **relayer** |
+| Cấu hình nền tảng | `setQcOracle`, `setClaimFee` | Owner (ví deploy) | Owner |
 
-**Sự kiện:** `CampaignCreated`, `ConsentGiven`, `ContributionRegistered`, `ConsentRevoked`, `Purchased`, `Claimed(amount, fee)`, `ClaimFeeUpdated`, `SnapshotPublished`.
+> Không hàm nào cho nền tảng (owner, QC oracle) quyết định dữ liệu của chiến dịch: công bố phiên bản dataset chỉ người tạo
+> chiến dịch làm được (`NotCreator`), implementation-plan §3 #28.
+
+**Sự kiện:** `CampaignCreated`, `ConsentGiven`, `ContributionRegistered`, `ConsentRevoked`, `Purchased`, `Claimed(amount, fee)`, `ClaimFeeUpdated`, `SnapshotPublished`, `Withdrawn`, `SeedWithdrawn`, `RelayFeePaid(payer, action, fee)`.
+
+**Hàm "WithSig" cho người tạo / người mua** (implementation-plan §3 #25; mã dưới đây là bản đề xuất gốc, bản chạy thật ở
+`contracts/src/VoiceCampaigns.sol`): bốn typehash mới `CreateCampaign(address creator, …, string metadataURI, …, uint256 fee,
+uint256 nonce, uint256 deadline)`, `Buy(uint256 campaignId, address buyer, uint256 maxPrice, uint256 fee, uint256 nonce,
+uint256 deadline)`, `Withdraw(address account, uint256 fee, uint256 nonce, uint256 deadline)`, `WithdrawSeed(uint256 campaignId,
+address creator, uint256 fee, uint256 nonce, uint256 deadline)` trên cùng domain `DatasetMarketplace`/`1`, cộng
+`PublishSnapshot(uint256 campaignId, bytes32 merkleRoot, string uri, uint256 nonce, uint256 deadline)` (người tạo công bố
+phiên bản, không thu phí — implementation-plan §3 #28); ba typehash gốc
+Consent/Revoke/Claim **giữ nguyên**. `fee` chuyển vào `withdrawable[feeCollector]` trong cùng giao dịch; trừ token bằng
+`PermitSig` (EIP-2612) tùy chọn. Các hàm gốc giữ nguyên để CLI / người tự trả gas vẫn dùng được.
 
 > **Trạng thái kiểm chứng:** contract, test và hai script deploy đã được biên dịch (solc 0.8.28, OpenZeppelin 5.1.0) và chạy bằng Foundry: **7/7 test đạt**; `Deploy.s.sol` và `SeedDemo.s.sol` đã deploy thành công lên chain local (Anvil); chốt chặn mainnet đã được thử và chặn đúng (mục 12.6). Chưa audit bảo mật; chỉ dùng trên testnet.
 
@@ -618,7 +717,7 @@ contract VoiceCampaigns is Ownable, EIP712, Nonces, ReentrancyGuard {
         _;
     }
 
-    constructor(address token_, address qcOracle_, address owner_) Ownable(owner_) EIP712("GiongQue", "1") {
+    constructor(address token_, address qcOracle_, address owner_) Ownable(owner_) EIP712("DatasetMarketplace", "1") {
         token = IERC20(token_);
         qcOracle = qcOracle_;
         feeCollector = owner_;
@@ -852,9 +951,13 @@ contract VoiceCampaigns is Ownable, EIP712, Nonces, ReentrancyGuard {
         if (amount > 0) token.safeTransfer(msg.sender, amount);
     }
 
-    // ------------------------------------------------------------------ phiên bản dataset, quản trị
+    // ------------------------------------------------------------------ phiên bản dataset (thuộc người tạo), cấu hình nền tảng
 
-    function publishSnapshot(uint256 campaignId, bytes32 merkleRoot, string calldata uri) external onlyQc {
+    /// Chỉ người tạo chiến dịch công bố phiên bản dataset của chiến dịch mình (implementation-plan §3 #28).
+    /// Bản chạy thật có thêm publishSnapshotWithSig: người tạo ký PublishSnapshot, relayer gửi và trả gas.
+    function publishSnapshot(uint256 campaignId, bytes32 merkleRoot, string calldata uri) external {
+        if (campaignId >= campaignCount) revert InvalidParams();
+        if (msg.sender != campaigns[campaignId].creator) revert NotCreator();
         emit SnapshotPublished(campaignId, merkleRoot, uri);
     }
 
@@ -955,7 +1058,7 @@ contract VoiceCampaignsTest is Test {
     function _digest(bytes32 structHash) internal view returns (bytes32) {
         bytes32 domainSeparator = keccak256(abi.encode(
             keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-            keccak256("GiongQue"), keccak256("1"), block.chainid, address(vc)
+            keccak256("DatasetMarketplace"), keccak256("1"), block.chainid, address(vc)
         ));
         return keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
     }
@@ -1118,6 +1221,8 @@ Suite result: ok. 7 passed; 0 failed; 0 skipped
 ### 9.5. Các quyết định thiết kế và giới hạn
 
 - **QC oracle tập trung:** chỉ server của đội được gọi `registerContribution`. Đây là điểm tin cậy duy nhất, cần nói thẳng khi pitch.
+- **Phiên bản dataset thuộc người tạo chiến dịch:** chỉ người tạo công bố (`publishSnapshot` báo `NotCreator` với ví khác);
+  QC oracle / owner không công bố thay. Bản ghi vùng xám cũng do người tạo duyệt (off-chain, quá hạn tự duyệt).
 - **Phí rút hộ do owner đặt**, nhưng người dùng luôn ký kèm `maxFee`, và luôn có lựa chọn tự rút miễn phí bằng `claim`.
 - **Giá có thể giảm khi có thu hồi.** Có `maxPrice` để bảo vệ người mua.
 - **Mỗi ví chỉ mua một license cho mỗi chiến dịch.** Không hoàn tiền khi chiến dịch không đạt mục tiêu.
@@ -1138,7 +1243,8 @@ Suite result: ok. 7 passed; 0 failed; 0 skipped
 | 5 | Forced alignment với câu mẫu | Điểm tin cậy trung bình thấp, hoặc có từ điểm quá thấp (bỏ từ) |
 | 6 | Chống trùng | Trùng commitment / đã đọc câu này |
 
-Kết quả có ba mức: **đạt** (ghi lên chain), **vùng xám** (hàng chờ duyệt tay), **loại** (báo lý do, đọc lại).
+Kết quả có ba mức: **đạt** (ghi lên chain), **vùng xám** (hàng chờ người tạo chiến dịch nghe lại và duyệt; quá hạn tự
+duyệt — §6.4), **loại** (báo lý do, đọc lại).
 
 ### 10.2. Nguyên tắc soạn câu mẫu
 
@@ -1181,7 +1287,7 @@ class Thresholds:
     min_chars_per_sec: float = 5.0
     max_chars_per_sec: float = 30.0
     max_cer_pass: float = 0.15      # dưới mức này: đạt
-    max_cer_gray: float = 0.30      # giữa hai mức: vùng xám, duyệt tay
+    max_cer_gray: float = 0.30      # giữa hai mức: vùng xám, người tạo chiến dịch duyệt
     min_align_pass: float = 0.60    # điểm alignment trung bình
     min_align_gray: float = 0.40
     min_word_score: float = 0.20    # một từ quá thấp => nghi bỏ từ / đọc sai
@@ -1367,10 +1473,11 @@ Mọi số tiền API trả về có **cả hai dạng**: `units` (đơn vị on
 
 | Method | Endpoint | Mô tả |
 |---|---|---|
-| POST | `/auth/google` | Đăng nhập, gắn email với một địa chỉ ví (mỗi email một ví) |
+| POST | `/auth/google` | Đăng nhập bằng Google ID token. **Lần đầu** kèm `address` + `nonce` + `signature` (ký `GET /auth/challenge`) để gắn email với một ví (mỗi email một ví); **các lần sau** chỉ cần ID token ⇒ phiên của đúng ví đã gắn. Email chưa gắn ví mà thiếu chữ ký ⇒ `409 wallet_required`; email đã gắn ví khác ⇒ `409 email_bound` (kèm `details.bound_wallet`); ví đã gắn email khác ⇒ `409 wallet_taken` (implementation-plan §3 #27) |
+| GET/PATCH | `/auth/me` | (đăng nhập) Tài khoản đang đăng nhập; PATCH đổi **tên hiển thị** và **mẫu ảnh đại diện** trong Cài đặt — ví liên kết không đổi được (implementation-plan §3 #31) |
 | GET | `/fx` | Tỷ giá USDC/VND đang dùng và nguồn (cố định hay HTTP) |
 | GET | `/campaigns` | Danh sách chiến dịch, giá hiện tại dạng VNĐ |
-| GET | `/campaigns/{id}` | Chi tiết: tiến độ, giá, số người, mẫu nghe thử |
+| GET | `/campaigns/{id}` | Chi tiết: tiến độ, giá, số người, mẫu nghe thử, thống kê duyệt vùng xám (`review`: chờ / duyệt / tự duyệt / loại) |
 | GET | `/campaigns/{id}/terms` | Điều khoản đồng thuận (hash khớp `termsHash` on-chain) |
 | POST | `/consent` | Nhận chữ ký EIP-712, relayer gọi `giveConsentWithSig` |
 | POST | `/campaigns/{id}/prompt` | Cấp câu mẫu chưa đọc + **prompt token** (ký HMAC, hết hạn ~60 giây) |
@@ -1381,10 +1488,29 @@ Mọi số tiền API trả về có **cả hai dạng**: `units` (đơn vị on
 | POST | `/revoke` | Nhận chữ ký thu hồi, relayer gọi `revokeWithSig`, xóa audio + salt |
 | POST | `/datasets/{id}/download` | Người mua ký thông điệp chứng minh ví → kiểm tra license on-chain → trả link tải có hạn |
 | POST | `/demo/faucet` | **[CHỈ LOCAL + FUJI]** mint mUSDC cho ví người mua demo; trả 404 khi `NETWORK=mainnet` |
-| POST | `/admin/snapshot/{id}` | Đóng gói phiên bản, tính Merkle root, gọi `publishSnapshot` |
-| GET | `/admin/review` | Hàng chờ vùng xám để duyệt tay |
+| GET | `/creator/review?campaign_id=` | (đăng nhập, chỉ người tạo) Hàng chờ vùng xám của các chiến dịch do ví này tạo, kèm thời điểm tự duyệt |
+| GET | `/creator/review/{id}/audio` | (chỉ người tạo của chiến dịch đó) Nghe bản ghi chờ duyệt |
+| POST | `/creator/review/{id}` | Duyệt (⇒ `registerContribution`, tiền mồi) hoặc loại (bắt buộc `note`, xóa audio) |
+| GET | `/campaigns/{id}/snapshot-quote` | (chỉ người tạo) Bản tóm tắt phiên bản sắp công bố (số bản ghi, tổng giây, Merkle root, có thay đổi không) + dữ liệu ký `PublishSnapshot` |
+| POST | `/campaigns/{id}/snapshots` | Nhận chữ ký `PublishSnapshot` của người tạo, relayer gọi `publishSnapshotWithSig` |
+| GET | `/fees` | Bảng phí xử lý hiện hành (VNĐ + USDC) cho hóa đơn trước khi ký: tạo, mua, rút, rút hộ (implementation-plan §3 #25) |
+| GET | `/campaigns/drafts/{draft_id}/create-quote` | (đăng nhập) Hóa đơn tạo chiến dịch (quỹ mồi + phí xử lý, số dư) + dữ liệu ký `CreateCampaign` và `Permit` (nếu cần) |
+| POST | `/campaigns/drafts/{draft_id}/create` | (đăng nhập) Nhận chữ ký, relayer gọi `createCampaignWithSig`, trả `campaign_id` |
+| GET | `/campaigns/{id}/buy-quote?buyer=` | Hóa đơn mua (giá + phí xử lý, số dư) + dữ liệu ký `Buy` và `Permit` (nếu cần); không cần đăng nhập |
+| POST | `/campaigns/{id}/buy` | Nhận chữ ký `Buy` (+ permit), relayer gọi `buyWithSig` |
+| GET | `/creator/withdraw-quote?address=` | Doanh thu người tạo chờ rút, phí xử lý, số thực nhận + dữ liệu ký `Withdraw` |
+| POST | `/creator/withdraw` | Nhận chữ ký `Withdraw`, relayer gọi `withdrawWithSig` |
+| GET | `/campaigns/{id}/seed-withdraw-quote` | Quỹ mồi còn dư (sau hạn), phí xử lý + dữ liệu ký `WithdrawSeed` |
+| POST | `/campaigns/{id}/withdraw-seed` | Nhận chữ ký `WithdrawSeed`, relayer gọi `withdrawSeedWithSig` |
+
+Các endpoint "…/create", "…/buy", "…/withdraw…" kiểm tra hạn ký, phí đã ký ≥ phí hiện hành, chữ ký thao tác và chữ ký permit
+**trước** khi relayer tốn gas (relayer còn mô phỏng giao dịch); lỗi dùng mã của hợp đồng (`BadSignature`, `PriceTooHigh`…)
+hoặc `fee_changed`, `permit_required`.
 
 **Bảo mật tối thiểu:** rate limit theo tài khoản, khóa riêng của relayer và QC oracle đặt trong biến môi trường, không bao giờ log audio hay salt, link tải dataset có hạn.
+**Không có endpoint quản trị** (implementation-plan §3 #28): mọi quyết định về dữ liệu chiến dịch cần phiên đăng nhập của
+đúng ví người tạo (và chữ ký ví khi công bố). Việc nền của nền tảng (đồng bộ sự kiện, tự duyệt quá hạn, thử ghi lại giao
+dịch lỗi tạm thời) chạy tự động trong backend, không qua API.
 
 ---
 
@@ -1460,7 +1586,7 @@ libs = ["lib", "node_modules"]
 remappings = ["@openzeppelin/=node_modules/@openzeppelin/", "forge-std/=lib/forge-std/src/"]
 
 [rpc_endpoints]
-local = "http://127.0.0.1:8545"
+local = "http://127.0.0.1:8386"   # implementation-plan §3 #26: Anvil cổng 8386
 fuji = "https://api.avax-test.network/ext/bc/C/rpc"
 mainnet = "https://api.avax.network/ext/bc/C/rpc"
 ```
@@ -1623,7 +1749,7 @@ class NetworkProfile:
 
 
 PROFILES: dict[str, NetworkProfile] = {
-    "local": NetworkProfile("local", 31337, "http://127.0.0.1:8545", "", True, True, "fixed"),
+    "local": NetworkProfile("local", 31337, "http://127.0.0.1:8386", "", True, True, "fixed"),  # §3 #26
     "fuji": NetworkProfile(
         "fuji", 43113, "https://api.avax-test.network/ext/bc/C/rpc",
         "https://testnet.snowtrace.io", True, True, "fixed",
@@ -1765,6 +1891,10 @@ VOICE_CAMPAIGNS=0x...        # địa chỉ trên Fuji
 TOKEN_ADDRESS=0x...          # MockUSDC trên Fuji
 RELAYER_PRIVATE_KEY=0x...    # ví relayer thật của đội (đã nạp AVAX test)
 USDC_VND_RATE=26000
+REVIEW_AUTO_APPROVE_HOURS=72 # người tạo chưa duyệt vùng xám sau 72 giờ ⇒ tự duyệt (0 = chờ mãi)
+B2_KEY_ID=...                # Backblaze B2 (tùy chọn): đặt cả ba ⇒ audio lưu trên bucket riêng tư
+B2_APPLICATION_KEY=...       # bí mật, KHÔNG commit
+B2_BUCKET=...
 ```
 
 ### 12.6. Kết quả kiểm chứng
@@ -1806,7 +1936,7 @@ Chưa deploy lên Fuji thật (cần AVAX test từ faucet của đội).
 
 | Bắt buộc (demo) | Nên có | Để lộ trình |
 |---|---|---|
-| Tạo chiến dịch, đồng thuận, ghi âm + QC, ghi nhận on-chain, mua theo giá tiến độ, chia doanh thu, rút tiền qua relayer (phí bằng tiền trong app), thu hồi, hiển thị VNĐ | Quỹ mồi, snapshot Merkle, hàng chờ duyệt tay, tải dataset theo license | Anti-spoofing, nhiều QC oracle, L1 riêng, người mua không cần AVAX (mua bằng chữ ký), hoàn tiền khi hủy |
+| Tạo chiến dịch, đồng thuận, ghi âm + QC, ghi nhận on-chain, mua theo giá tiến độ, chia doanh thu, rút tiền qua relayer (phí bằng tiền trong app), thu hồi, hiển thị VNĐ | Quỹ mồi, snapshot Merkle do người tạo ký công bố, người tạo duyệt vùng xám (quá hạn tự duyệt), tải dataset theo license, audio trên Backblaze B2, **không ai cần AVAX** (tạo chiến dịch/mua/rút chỉ bằng chữ ký + permit, relayer trả phí mạng) | Anti-spoofing, nhiều QC oracle, L1 riêng, phí theo gas thực tế + % biên, hoàn tiền khi hủy |
 
 ---
 
@@ -1841,8 +1971,9 @@ Chưa deploy lên Fuji thật (cần AVAX test từ faucet của đội).
 |---|---|
 | Sao không dùng database thường? | Người đóng góp và người mua không cần tin nền tảng: giá, chia tiền, đồng thuận đều kiểm chứng được và nền tảng không sửa được |
 | Tiền hiển thị VNĐ nhưng chain lưu gì? | USDC (trên Fuji là bản giả lập). VNĐ là lớp hiển thị theo tỷ giá. Lên mainnet chỉ đổi địa chỉ token |
-| Người dùng có cần AVAX không? | Người đóng góp không: relayer trả gas và thu lại phí nhỏ bằng tiền trong app |
+| Người dùng có cần AVAX không? | Không ai cần: mọi thao tác chỉ ký, relayer trả gas và thu lại phí xử lý nhỏ bằng tiền trong app (hiện bằng VNĐ trên hóa đơn; người dùng ký đúng số phí đó) |
 | Rút tiền rồi thu hồi thì sao? | Giữ tiền đã nhận, mất thu nhập tương lai |
+| Ai duyệt bản ghi máy chưa chắc chắn? Ai công bố dataset? | Người tạo chiến dịch — chủ dữ liệu; web không có admin. Quá 72 giờ chưa duyệt thì tự duyệt để người đóng góp không bị treo, tỉ lệ duyệt/loại công khai. Phiên bản dataset chỉ lên chain khi người tạo ký |
 | Thu hồi có xóa block không? | Không. Thu hồi là giao dịch mới; audio xóa off-chain, hash có salt trở nên vô nghĩa |
 | Lỡ có người dùng TTS đọc? | Chỉ ghi trực tiếp, câu mẫu hiện lúc ghi, token có hạn; lộ trình anti-spoofing |
 | Người mua phát tán dataset? | Blockchain không ngăn được; nó ghi license và bằng chứng để xử lý theo điều khoản |
@@ -1857,8 +1988,12 @@ Chưa deploy lên Fuji thật (cần AVAX test từ faucet của đội).
 | Gian lận bằng TTS | Cao | Ghi trực tiếp, câu mẫu hiện lúc ghi, prompt token có hạn |
 | Lẫn cấu hình môi trường (deploy nhầm mock lên mainnet, dùng anvil key ngoài local) | Trung bình | Script chặn theo chain id, `.env` tách theo môi trường, không commit `.env` |
 | Một người nhiều tài khoản | Trung bình | Google login, mỗi email một ví, rate limit |
-| Ngưỡng QC sai (loại nhầm / lọt) | Trung bình | Tự ghi dữ liệu chọn ngưỡng, vùng xám duyệt tay |
+| Người đóng góp mất ví trình duyệt (xóa dữ liệu trình duyệt, đổi máy, quên mật khẩu) | Cao | File sao lưu keystore V3 (thẻ nhắc ở Tổng quan + nhắc trong hộp thoại rút tiền); nạp file vào MetaMask/Core để nâng cấp, cùng địa chỉ. Quên mật khẩu thì file cũng không mở được — giao diện nói rõ |
+| Ngưỡng QC sai (loại nhầm / lọt) | Trung bình | Tự ghi dữ liệu chọn ngưỡng, vùng xám do người tạo chiến dịch nghe lại và duyệt |
+| Người tạo không duyệt / loại bừa để khỏi trả tiền mồi | Trung bình | Quá `REVIEW_AUTO_APPROVE_HOURS` tự duyệt; loại bắt buộc ghi lý do người đóng góp thấy; số duyệt / tự duyệt / loại công khai trên trang chiến dịch |
+| Lộ / mất audio trong kho lưu trữ | Trung bình | Backblaze B2: bucket riêng tư, mã hóa phía máy chủ, application key chỉ cấp cho một bucket và chỉ nằm trong `.env`; thu hồi / bị loại thì xóa mọi phiên bản file |
 | Relayer hết AVAX test giữa lúc chấm | Trung bình | Theo dõi số dư, xin faucet dư, cảnh báo khi dưới ngưỡng |
+| Relayer bị lạm dụng để đốt AVAX (spam tạo chiến dịch / mua) | Trung bình | Mỗi giao dịch tự trả phí xử lý bằng token trong cùng giao dịch; backend kiểm tra chữ ký, permit, số dư và mô phỏng trước khi gửi; rate limit nhóm "relay" |
 | Tỷ giá hiển thị lệch tỷ giá thật | Thấp | Hiển thị "≈" và số USDC gốc; mainnet lấy tỷ giá định kỳ |
 | Lộ khóa relayer/QC oracle | Trung bình | Biến môi trường, ví riêng chỉ chứa ít AVAX; `setQcOracle` để thay khóa |
 | Trễ tiến độ | Cao | Ưu tiên một luồng trọn vẹn; cắt "nên có" trước |
@@ -1869,7 +2004,7 @@ Chưa deploy lên Fuji thật (cần AVAX test từ faucet của đội).
 
 - **Anti-spoofing** phát hiện giọng TTS/giả.
 - **Nhiều QC oracle**: cần đa số đồng ý mới ghi nhận bản ghi.
-- **Người mua không cần AVAX:** mua bằng chữ ký (EIP-3009, USDC thật có hỗ trợ), relayer trả gas.
+- **Phí xử lý theo gas thực tế:** phí = gas ước tính × giá gas × giá AVAX (Chainlink) quy ra USDC, cộng % biên, có mức tối thiểu (implementation-plan §3 #25). Hợp đồng không phải đổi.
 - **Relayer tự nạp gas:** định kỳ đổi phí USDC thu được sang AVAX trên DEX.
 - **Thanh toán bằng chuyển khoản VNĐ** cho người mua là tổ chức (nền tảng đổi sang USDC rồi gọi `buy` hộ), kèm kiểm tra quy định hiện hành về tài sản mã hóa.
 - **L1 riêng** cho chợ dữ liệu: token gas riêng, người dùng không bao giờ thấy phí.
@@ -1885,7 +2020,9 @@ Chưa deploy lên Fuji thật (cần AVAX test từ faucet của đội).
 - [ ] `Deploy.s.sol` + `SeedDemo.s.sol` chạy trên **Fuji**; địa chỉ contract ghi vào README và `.env.fuji`
 - [ ] Contract **verify** trên Snowtrace
 - [ ] Backend và frontend chạy với `NETWORK=fuji`, giá hiển thị đúng VNĐ
-- [ ] Ví người mua demo có mUSDC và một ít AVAX
+- [ ] Ví người mua demo có mUSDC (không cần AVAX: mua chỉ bằng chữ ký)
+- [ ] Người tạo chiến dịch demo đã ký công bố phiên bản dataset (chưa công bố thì người mua chưa tải được)
+- [ ] (Nếu dùng Backblaze B2) bucket riêng tư đã tạo; `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET` chỉ nằm trong `.env.fuji`
 - [ ] Không có `.env` thật hay private key nào trong repo
 - [ ] Repo GitHub có README (làm gì, chạy thế nào ở từng môi trường, địa chỉ contract); public hoặc đã add `tuantqse90`
 - [ ] Slide và video 2–3 phút (vấn đề xuất hiện trong 30 giây đầu), ai cũng mở được

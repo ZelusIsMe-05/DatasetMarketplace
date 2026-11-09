@@ -2,23 +2,23 @@
 
 import { useQueries } from "@tanstack/react-query";
 import Link from "next/link";
-import { useAccount } from "wagmi";
-import { network } from "@/lib/config";
 import { formatDuration } from "@/lib/format";
 import { qk, useCampaigns } from "@/hooks/queries";
+import { useAccountWallet } from "@/hooks/useSessions";
 import { publicApi } from "@/services/api";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, SkeletonCard } from "@/components/ui/states";
-import { ConnectWallet } from "@/components/wallet/connect-wallet";
+import { WalletStatus } from "@/features/auth/wallet-status";
 import { VoiceSignature } from "@/features/marketplace/dataset-card";
 import { DownloadPanel } from "@/features/marketplace/download-panel";
 import { accentLabel, campaignName } from "@/features/marketplace/labels";
 
-/** Bộ dữ liệu ví đang kết nối đã mua (đọc license on-chain qua backend cho từng chiến dịch). */
+/** Bộ dữ liệu đã mua bằng ví gắn với Gmail đang đăng nhập (đọc license on-chain qua backend cho từng chiến dịch). */
 export function Library() {
-  const { address, chainId } = useAccount();
+  const aw = useAccountWallet();
+  const address = aw.account && aw.metamask === "ready" ? aw.address! : undefined;
   const campaigns = useCampaigns();
   const licenses = useQueries({
     queries: (campaigns.data ?? []).map((c) => ({
@@ -28,10 +28,14 @@ export function Library() {
     })),
   });
 
-  if (!address || chainId !== network.chain.id) {
+  if (!address) {
     return (
       <div className="container-page">
-        <EmptyState title="Kết nối ví để xem bộ dữ liệu đã mua" description="License được ghi trên Avalanche theo địa chỉ ví người mua." action={<ConnectWallet />} />
+        <EmptyState
+          title={aw.account ? "Kết nối đúng ví để xem bộ dữ liệu đã mua" : "Đăng nhập để xem bộ dữ liệu đã mua"}
+          description="Các bộ dữ liệu bạn đã mua."
+          action={<WalletStatus purpose="xem và tải bộ dữ liệu đã mua" />}
+        />
       </div>
     );
   }

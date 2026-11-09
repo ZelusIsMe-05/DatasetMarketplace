@@ -54,6 +54,6 @@ def test_backend_refuses_mock_token_on_mainnet(mainnet_like, tmp_path):
     s = load_settings(env_file=tmp_path / "none.env", overrides={
         "NETWORK": "mainnet", "RPC_URL": url, "VOICE_CAMPAIGNS": d["vc"], "TOKEN_ADDRESS": d["token"],
         "RELAYER_PRIVATE_KEY": KEYS["deployer"], "FX_URL": "https://fx.invalid/rate", "JWT_SECRET": "j" * 40,
-        "TOKEN_SECRET": "t" * 40, "ADMIN_API_KEY": "a", "DEV_AUTH_ENABLED": "false", "STORAGE_DIR": str(tmp_path)})
+        "TOKEN_SECRET": "t" * 40, "DEV_AUTH_ENABLED": "false", "STORAGE_DIR": str(tmp_path)})
     with pytest.raises(StartupError, match="MockUSDC"):
         build_container(s)

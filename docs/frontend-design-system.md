@@ -114,10 +114,16 @@ Tiêu đề dùng `text-wrap: balance`, đoạn văn `text-wrap: pretty`. Không
 | `EmptyState`, `ErrorState` | `components/ui/states.tsx` | có hành động / nút Thử lại | — | `ErrorState` là `role="alert"` |
 | `AnimatedNumber`, `Reveal`, `CopyButton`, `Stepper`, `SectionHeading` | `components/ui/misc.tsx` | — | — | Stepper `aria-current="step"`; Copy đổi `aria-label` |
 | `MoneyText` | `components/money.tsx` | `sm`–`xl` | — | VNĐ "≈" dòng chính, token dòng phụ |
-| `AudioPlayer` | `components/audio/audio-player.tsx` | `src` công khai hoặc `load()` (header admin) | tải, phát, tua, lỗi | nút có nhãn "Phát/Tạm dừng …" |
+| `AudioPlayer` | `components/audio/audio-player.tsx` | `src` công khai hoặc `load()` (blob cần phiên đăng nhập, vd. bản ghi chờ người tạo duyệt) | tải, phát, tua, lỗi | nút có nhãn "Phát/Tạm dừng …" |
 | `LiveWaveform` | `components/audio/live-waveform.tsx` | — | reduced motion → thanh mức | `aria-hidden` (trạng thái do chữ/đồng hồ thể hiện) |
 | `TxSteps`, `TxHash` | `components/tx/tx-steps.tsx` | — | idle · waiting · simulating · signing · pending · success · error | `aria-live="polite"` |
-| `ConnectWallet` | `components/wallet/connect-wallet.tsx` | — | chưa kết nối · sai mạng (nút chuyển mạng) · đã kết nối (menu) | menu `aria-haspopup`, Esc/đóng khi bấm ngoài |
+| `AccountMenu` (header) | `features/auth/account-menu.tsx` | — | chưa đăng nhập (nút **Đăng nhập**) · đã đăng nhập: ảnh đại diện + tên; menu chỉ có **số dư (VNĐ)**, **Cài đặt**, **Đăng xuất** (implementation-plan §3 #31) | menu `aria-haspopup`, Esc/đóng khi bấm ngoài; nút có `aria-label="Tài khoản <email>"` |
+| `AccountSettings`, `Avatar` | `features/auth/account-settings.tsx`, `features/auth/profile.tsx` | ảnh đại diện: 8 mẫu (`--avatar-*` trong `globals.css`) + chữ cái đầu | tên hiển thị, chọn ảnh đại diện, ví liên kết (sao chép) | `Dialog`; ảnh đại diện là nhóm radio có nhãn; chữ trắng trên nền đủ tối |
+| `LoginButton` + `LoginPanel` | `features/auth/login-button.tsx`, `login-panel.tsx` | `dialog` (header/các trang) · `earn` (gắn được ví trình duyệt) | Gmail → (lần đầu) Gắn ví với Gmail: MetaMask (kết nối → ký) hoặc ví trình duyệt (tạo / mở khóa) | `Dialog`; lỗi `role="alert"` |
+| `WalletGate` / `WalletStatus` | `features/auth/wallet-status.tsx` | `compact` | chưa đăng nhập · ví trình duyệt (hướng dẫn nâng cấp) · chưa kết nối · chọn nhầm tài khoản · sai mạng | cảnh báo `role="alert"` |
+| `WalletBackupCard` + hộp thoại file ví | `features/earn/wallet-backup.tsx` | `backup` (tải file) · `upgrade` (tải file → nạp vào MetaMask → kết nối) | chưa sao lưu (tone `peach`) · đã sao lưu (thời điểm) · sai mật khẩu · MetaMask chọn sai tài khoản | trạng thái `role="status"`; lỗi kết nối `role="alert"`; dùng `Dialog` + `PasswordInput` |
+| `CampaignDataPanel` (hàng chờ duyệt + phiên bản dataset) | `features/creator/campaign-data.tsx` | trong thẻ mỗi chiến dịch ở `/create` | hàng chờ trống · thẻ bản ghi vùng xám (nghe, chỉ số QC, giờ tự duyệt, **Duyệt** / **Loại…** → hộp thoại bắt buộc lý do) · phiên bản: chưa công bố / đang phát hành / có dữ liệu mới / **đã khóa** (warning) → hộp thoại bản tóm tắt + `TxSteps` (ký → nền tảng gửi) | mỗi khu là `section` có tiêu đề; lý do loại dùng `Field` + `Textarea` (nút tắt tới khi có lý do); hộp thoại `Dialog` khóa khi đang ký |
+| `BrowserWalletNotice` | `features/earn/bound-email-notice.tsx` | — | Gmail gắn ví trình duyệt nhưng trang cần MetaMask ⇒ hướng dẫn nâng cấp | `role="alert"`, chữ `warning-ink` trên `warning-soft` |
 | `SiteHeader`, `SiteFooter`, `PageHeader`, `PageTransition` | `components/layout/` | header trong suốt → mờ kính khi cuộn; menu di động | — | Liên kết "Bỏ qua tới nội dung chính", `aria-current="page"` |
 
 ### Do / Don't
@@ -137,8 +143,33 @@ Tiêu đề dùng `text-wrap: balance`, đoạn văn `text-wrap: pretty`. Không
 - **Form nhiều bước:** `Stepper` + `AnimatePresence` trượt ngang; kiểm tra từng bước (nút "Tiếp tục" tắt + lý do);
   bước cuối là "Xem trước & ký" kèm `TxSteps` (wizard tạo chiến dịch, onboarding người đóng góp).
 - **Thao tác relayer** (đồng thuận, rút tiền, thu hồi): Dialog → ký trên thiết bị → "Nền tảng gửi lên Avalanche" → mã giao dịch.
-- **Thao tác ví người dùng** (mua, tạo chiến dịch, rút phần chia): `useContractTx` mô phỏng trước (lỗi giải mã tiếng Việt,
-  không bật ví), ký, chờ receipt; mỗi giao dịch là một dòng `TxSteps`.
+- **Thao tác của người tạo / người mua** (tạo chiến dịch, mua, rút doanh thu, rút quỹ mồi): cũng chỉ ký — nền tảng trả phí
+  mạng (implementation-plan §3 #25). `hooks/useSponsored.ts` → `useSponsoredFlow().run(lấy báo giá, gửi chữ ký)`: báo giá →
+  "Ký cho phép trừ … (miễn phí)" (permit, chỉ khi hạn mức chưa đủ) → "Ký … (miễn phí)" → "Nền tảng gửi giao dịch và trả phí
+  mạng" (kèm mã giao dịch, ghi chú "Không cần ETH/AVAX trong ví"); `flow.steps(labels)` cho `TxSteps`. Web không gửi giao
+  dịch nào từ ví người dùng.
+- **Hóa đơn trước khi ký** (bước "Xem trước & ký", khung mua, thẻ rút doanh thu): mọi dòng bằng VNĐ — khoản tiền (giá, quỹ
+  mồi), **"Phí xử lý" — "đã gồm phí mạng nền tảng trả hộ"** (lấy từ `GET /fees` qua `useFees()`), **tổng trừ từ ví** và **số
+  dư ví hiện có**; thiếu tiền thì nút ký tắt và (local/Fuji) hiện nút "Nhận mUSDC thử nghiệm". Chú thích chung
+  `SPONSORED_NOTE`. Không còn ước tính gas bằng ETH/AVAX.
+- **Đăng nhập Gmail, ví đi theo Gmail (§3 #27):** header là nút **Đăng nhập** (không có nút kết nối ví riêng). Lần đầu,
+  `LoginPanel` chuyển sang "Gắn ví với Gmail": MetaMask (kết nối → "Ký & gắn ví này", "Chọn tài khoản khác") hoặc, ở `/earn`,
+  ví trình duyệt (tạo mới / mở khóa). Các lần sau chỉ báo đăng nhập thành công; người dùng chủ động kết nối ví khi cần ký.
+  Khi kết nối, hiển thị đầy đủ địa chỉ ví đã gắn với tài khoản; chọn ví khác thì chặn ký. Trang cần ký bằng MetaMask bọc trong
+  `WalletGate`; `useAccountWallet()` trả trạng thái `disconnected | wrong-account | wrong-chain | ready` so với ví đã gắn.
+- **Hai cấp ví ở /earn:** onboarding 3 bước **Đăng nhập → Ví của bạn → Bắt đầu** (`Stepper align="center"`). Ví đã gắn là ví
+  trình duyệt trên máy này ⇒ mở khóa bằng mật khẩu (có lối "Dùng MetaMask / Core" nếu đã nâng cấp); không có trên máy ⇒ kết
+  nối MetaMask đúng ví đó. `useContributor()` trả một `signer` chung nên các hộp thoại đồng thuận / rút tiền / thu hồi không
+  phân biệt loại ví. Header khu vực hiện "Ví trình duyệt 0x…" hoặc "MetaMask 0x…".
+- **Lỗi có hướng dẫn:** tình huống người dùng tự gỡ được (Gmail gắn ví trình duyệt nhưng trang cần MetaMask; MetaMask chọn nhầm
+  tài khoản) hiện khung hướng dẫn ngay trong thẻ, kèm nút hành động, không chỉ toast.
+- **Lỗi ví luôn tiếng Việt:** mọi `catch` ở luồng ví/ký/giao dịch hiển thị qua `describeChainError()` (`lib/chainErrors.ts`),
+  không in `e.message` của viem/wagmi (tiếng Anh, nhiều dòng). Hàm duyệt chuỗi `cause` và dịch theo mã ví EIP-1193
+  (4001 từ chối, 4100 ví khóa / tài khoản chưa cấp quyền, 4900/4901/4902 mạng, -32002 yêu cầu đang chờ), theo tên lỗi
+  wagmi/viem (chưa kết nối, sai mạng, thiếu phí gas, lệch nonce, RPC) và theo tên lỗi hợp đồng; lỗi lạ hiện câu chung
+  tiếng Việt và ghi chi tiết vào `console.warn`. Lỗi máy chủ (`ApiError`) vốn đã tiếng Việt nên giữ nguyên.
+- **Nhập từ file:** nút `outline` "Nhập từ file .txt" cạnh tiêu đề, `<input type="file" hidden>`; đọc file trên trình duyệt, toast
+  báo số dòng đã nhập, nội dung vẫn sửa được trong ô.
 - **Danh sách dữ liệu:** lọc bằng `Tabs` + `Select`, tìm kiếm `useDeferredValue`, đổi bố cục bằng `layout` animation;
   thẻ "Nổi bật" nằm ngang phá nhịp lưới; mỗi bộ dữ liệu có "chữ ký sóng âm" riêng (tất định theo id).
 - **Hành động chính trên di động:** thanh cố định đáy (trang dataset: giá + "Mua license").
@@ -146,7 +177,8 @@ Tiêu đề dùng `text-wrap: balance`, đoạn văn `text-wrap: pretty`. Không
 - **Mật khẩu ví (tạo ví):** `PasswordInput` + `PasswordRequirements` luôn hiển thị; quy tắc ở `lib/password.ts` (≥ 8 ký tự,
   chữ hoa, chữ thường, chữ số, ký tự đặc biệt — kiểm tra Unicode nên chữ có dấu như "Ấ", "ê" được tính đúng); dòng trạng thái
   `role="status"` nói còn thiếu gì; ô nhập lại báo "đã khớp/chưa khớp"; nút chính tắt tới khi hợp lệ. `lib/browserWallet.ts`
-  chặn lại lần nữa khi tạo ví. Mở khóa ví và admin key chỉ dùng `PasswordInput` (không áp quy tắc).
+  chặn lại lần nữa khi tạo ví. Mở khóa ví và tải file sao lưu chỉ dùng `PasswordInput` (không áp quy tắc).
+  File sao lưu = keystore V3 (`lib/keystore.ts`) mã hóa bằng chính mật khẩu ví, tên `vi-datasetmarketplace-0x….json`.
 
 ## 5. Responsive
 
@@ -158,10 +190,10 @@ chuyển từ cột phải dính (sticky) sang cuối trang + thanh hành độn
 
 | Kiểm tra | Lệnh | Kết quả gần nhất |
 |---|---|---|
-| WCAG 2.2 AA (axe-core) — 8 trang công khai | `npm run test:a11y` | 0 vi phạm |
-| WCAG 2.2 AA tại 6 trạng thái sau đăng nhập (wizard, hộp thoại đồng thuận, kết quả QC, hộp thoại rút tiền, admin, thư viện) | `npm run test:e2e` | 0 vi phạm |
+| WCAG 2.2 AA (axe-core) — 7 trang công khai | `npm run test:a11y` | 0 vi phạm |
+| WCAG 2.2 AA tại 9 trạng thái sau đăng nhập (wizard, hộp thoại đồng thuận, kết quả QC, hộp thoại sao lưu ví, hộp thoại nâng cấp MetaMask, hướng dẫn `email_bound`, hộp thoại rút tiền, hộp thoại người tạo công bố phiên bản, thư viện) | `npm run test:e2e` | 0 vi phạm |
 | Reduced motion, bàn phím (skip link, focus) | `npm run test:a11y` | đạt |
-| Luồng nghiệp vụ trên trình duyệt (7 bước, 4 vai trò) | `npm run test:e2e` | đạt |
+| Luồng nghiệp vụ trên trình duyệt (9 bước, 4 vai trò; người đóng góp nâng cấp từ ví trình duyệt lên MetaMask giữa luồng) | `npm run test:e2e` | đạt |
 
 ## 7. Audit token (theo skill `design:design-system`)
 

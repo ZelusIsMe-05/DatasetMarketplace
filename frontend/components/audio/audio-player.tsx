@@ -24,7 +24,7 @@ async function computePeaks(blob: Blob, bars: number): Promise<number[]> {
 }
 
 interface AudioPlayerProps {
-  /** URL công khai (mẫu nghe thử) hoặc hàm tải blob (ví dụ cần header admin) */
+  /** URL công khai (mẫu nghe thử) hoặc hàm tải blob (ví dụ bản ghi chờ duyệt, cần phiên đăng nhập của chủ chiến dịch) */
   src?: string;
   load?: () => Promise<Blob>;
   label: string;

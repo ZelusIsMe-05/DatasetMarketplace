@@ -26,7 +26,7 @@ if not exist lib\forge-std\src\Test.sol (forge install foundry-rs/forge-std --no
 forge build || (popd & exit /b 1)
 popd
 
-rem ---------- 4. Backend: venv + torch CPU + deps + CLI giongque
+rem ---------- 4. Backend: venv + torch CPU + deps + CLI datasetmarketplace
 pushd "%BACKEND%"
 if not exist .venv\Scripts\python.exe (python -m venv .venv || (popd & exit /b 1))
 .venv\Scripts\python.exe -m pip install --upgrade pip

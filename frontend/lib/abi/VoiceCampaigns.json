@@ -87,6 +87,76 @@
  },
  {
   "type": "function",
+  "name": "buyWithSig",
+  "inputs": [
+   {
+    "name": "campaignId",
+    "type": "uint256",
+    "internalType": "uint256"
+   },
+   {
+    "name": "buyer",
+    "type": "address",
+    "internalType": "address"
+   },
+   {
+    "name": "maxPrice",
+    "type": "uint256",
+    "internalType": "uint256"
+   },
+   {
+    "name": "fee",
+    "type": "uint256",
+    "internalType": "uint256"
+   },
+   {
+    "name": "deadline",
+    "type": "uint256",
+    "internalType": "uint256"
+   },
+   {
+    "name": "sig",
+    "type": "bytes",
+    "internalType": "bytes"
+   },
+   {
+    "name": "permit",
+    "type": "tuple",
+    "internalType": "struct VoiceCampaigns.PermitSig",
+    "components": [
+     {
+      "name": "value",
+      "type": "uint256",
+      "internalType": "uint256"
+     },
+     {
+      "name": "deadline",
+      "type": "uint256",
+      "internalType": "uint256"
+     },
+     {
+      "name": "v",
+      "type": "uint8",
+      "internalType": "uint8"
+     },
+     {
+      "name": "r",
+      "type": "bytes32",
+      "internalType": "bytes32"
+     },
+     {
+      "name": "s",
+      "type": "bytes32",
+      "internalType": "bytes32"
+     }
+    ]
+   }
+  ],
+  "outputs": [],
+  "stateMutability": "nonpayable"
+ },
+ {
+  "type": "function",
   "name": "campaignCount",
   "inputs": [],
   "outputs": [
@@ -291,6 +361,129 @@
     "name": "seedAmount",
     "type": "uint256",
     "internalType": "uint256"
+   }
+  ],
+  "outputs": [
+   {
+    "name": "id",
+    "type": "uint256",
+    "internalType": "uint256"
+   }
+  ],
+  "stateMutability": "nonpayable"
+ },
+ {
+  "type": "function",
+  "name": "createCampaignWithSig",
+  "inputs": [
+   {
+    "name": "p",
+    "type": "tuple",
+    "internalType": "struct VoiceCampaigns.CampaignParams",
+    "components": [
+     {
+      "name": "targetSec",
+      "type": "uint64",
+      "internalType": "uint64"
+     },
+     {
+      "name": "fullPrice",
+      "type": "uint128",
+      "internalType": "uint128"
+     },
+     {
+      "name": "contributorBps",
+      "type": "uint16",
+      "internalType": "uint16"
+     },
+     {
+      "name": "creatorBps",
+      "type": "uint16",
+      "internalType": "uint16"
+     },
+     {
+      "name": "deadline",
+      "type": "uint64",
+      "internalType": "uint64"
+     },
+     {
+      "name": "promptSetHash",
+      "type": "bytes32",
+      "internalType": "bytes32"
+     },
+     {
+      "name": "termsHash",
+      "type": "bytes32",
+      "internalType": "bytes32"
+     },
+     {
+      "name": "metadataURI",
+      "type": "string",
+      "internalType": "string"
+     },
+     {
+      "name": "seedRatePerSec",
+      "type": "uint256",
+      "internalType": "uint256"
+     },
+     {
+      "name": "seedAmount",
+      "type": "uint256",
+      "internalType": "uint256"
+     }
+    ]
+   },
+   {
+    "name": "creator",
+    "type": "address",
+    "internalType": "address"
+   },
+   {
+    "name": "fee",
+    "type": "uint256",
+    "internalType": "uint256"
+   },
+   {
+    "name": "deadline",
+    "type": "uint256",
+    "internalType": "uint256"
+   },
+   {
+    "name": "sig",
+    "type": "bytes",
+    "internalType": "bytes"
+   },
+   {
+    "name": "permit",
+    "type": "tuple",
+    "internalType": "struct VoiceCampaigns.PermitSig",
+    "components": [
+     {
+      "name": "value",
+      "type": "uint256",
+      "internalType": "uint256"
+     },
+     {
+      "name": "deadline",
+      "type": "uint256",
+      "internalType": "uint256"
+     },
+     {
+      "name": "v",
+      "type": "uint8",
+      "internalType": "uint8"
+     },
+     {
+      "name": "r",
+      "type": "bytes32",
+      "internalType": "bytes32"
+     },
+     {
+      "name": "s",
+      "type": "bytes32",
+      "internalType": "bytes32"
+     }
+    ]
    }
   ],
   "outputs": [
@@ -676,6 +869,39 @@
  },
  {
   "type": "function",
+  "name": "publishSnapshotWithSig",
+  "inputs": [
+   {
+    "name": "campaignId",
+    "type": "uint256",
+    "internalType": "uint256"
+   },
+   {
+    "name": "merkleRoot",
+    "type": "bytes32",
+    "internalType": "bytes32"
+   },
+   {
+    "name": "uri",
+    "type": "string",
+    "internalType": "string"
+   },
+   {
+    "name": "deadline",
+    "type": "uint256",
+    "internalType": "uint256"
+   },
+   {
+    "name": "sig",
+    "type": "bytes",
+    "internalType": "bytes"
+   }
+  ],
+  "outputs": [],
+  "stateMutability": "nonpayable"
+ },
+ {
+  "type": "function",
   "name": "qcOracle",
   "inputs": [],
   "outputs": [
@@ -855,6 +1081,62 @@
     "name": "campaignId",
     "type": "uint256",
     "internalType": "uint256"
+   }
+  ],
+  "outputs": [],
+  "stateMutability": "nonpayable"
+ },
+ {
+  "type": "function",
+  "name": "withdrawSeedWithSig",
+  "inputs": [
+   {
+    "name": "campaignId",
+    "type": "uint256",
+    "internalType": "uint256"
+   },
+   {
+    "name": "fee",
+    "type": "uint256",
+    "internalType": "uint256"
+   },
+   {
+    "name": "deadline",
+    "type": "uint256",
+    "internalType": "uint256"
+   },
+   {
+    "name": "sig",
+    "type": "bytes",
+    "internalType": "bytes"
+   }
+  ],
+  "outputs": [],
+  "stateMutability": "nonpayable"
+ },
+ {
+  "type": "function",
+  "name": "withdrawWithSig",
+  "inputs": [
+   {
+    "name": "account",
+    "type": "address",
+    "internalType": "address"
+   },
+   {
+    "name": "fee",
+    "type": "uint256",
+    "internalType": "uint256"
+   },
+   {
+    "name": "deadline",
+    "type": "uint256",
+    "internalType": "uint256"
+   },
+   {
+    "name": "sig",
+    "type": "bytes",
+    "internalType": "bytes"
    }
   ],
   "outputs": [],
@@ -1130,6 +1412,31 @@
     "type": "address",
     "indexed": false,
     "internalType": "address"
+   }
+  ],
+  "anonymous": false
+ },
+ {
+  "type": "event",
+  "name": "RelayFeePaid",
+  "inputs": [
+   {
+    "name": "payer",
+    "type": "address",
+    "indexed": true,
+    "internalType": "address"
+   },
+   {
+    "name": "action",
+    "type": "bytes4",
+    "indexed": true,
+    "internalType": "bytes4"
+   },
+   {
+    "name": "fee",
+    "type": "uint256",
+    "indexed": false,
+    "internalType": "uint256"
    }
   ],
   "anonymous": false

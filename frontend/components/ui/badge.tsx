@@ -36,7 +36,7 @@ export function CampaignStatusBadge({ status }: { status: string }) {
 
 const CONTRIB_STATUS: Record<string, { tone: BadgeTone; label: string }> = {
   registered: { tone: "success", label: "Hợp lệ · on-chain" },
-  gray: { tone: "warning", label: "Chờ duyệt" },
+  gray: { tone: "warning", label: "Chờ chủ chiến dịch duyệt" },
   pending_chain: { tone: "warning", label: "Đang ghi nhận" },
   rejected: { tone: "danger", label: "Chưa đạt" },
   revoked: { tone: "neutral", label: "Đã thu hồi" },

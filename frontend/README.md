@@ -16,12 +16,12 @@ npm run test:a11y    :: axe WCAG 2.2 AA + reduced motion + bàn phím
 
 | Thư mục | Nội dung |
 |---|---|
-| `app/` | Route: `/`, `/explore`, `/datasets/[id]`, `/library`, `/earn/*`, `/create`, `/create/new`, `/admin` |
-| `features/landing` · `marketplace` · `earn` · `creator` · `admin` | Màn hình theo vai trò (đặc tả §5) |
+| `app/` | Route: `/`, `/explore`, `/datasets/[id]`, `/library`, `/earn/*`, `/create`, `/create/new` (không có trang quản trị) |
+| `features/landing` · `marketplace` · `earn` · `creator` · `auth` | Màn hình theo vai trò (đặc tả §5); `creator/campaign-data.tsx`: người tạo duyệt vùng xám + ký công bố phiên bản |
 | `components/ui` | Design system: Button, Field/Input/Select/Textarea, PasswordInput + PasswordRequirements, Card, Badge, Dialog/Confirm, Tabs, Progress, Skeleton, Empty/Error state, AnimatedNumber, Reveal, Stepper, CopyButton |
 | `components/audio` · `tx` · `wallet` · `layout` | AudioPlayer, LiveWaveform, TxSteps, ConnectWallet, header/footer/PageTransition |
 | `services/api.ts` | Client cho mọi endpoint backend (khớp Swagger `/docs`) |
-| `hooks/` | React Query (`queries.ts`), phiên theo ví (`useSessions.ts`), đọc contract (`useChain.ts`), giao dịch ví (`useContractTx.ts`) |
+| `hooks/` | React Query (`queries.ts`), phiên theo ví (`useSessions.ts`), đọc contract (`useChain.ts`), giao dịch nền tảng trả phí hộ — chỉ ký (`useSponsored.ts`) |
 | `lib/` | `password` (chính sách mật khẩu mạnh), `browserWallet` (ví mã hóa mật khẩu + EIP-712), `recorder` (AudioWorklet → WAV 16 kHz), `money`, `config`, `wagmi`, `contracts` (ABI), `chainErrors` |
 | `providers/` | Auth (ví trình duyệt + phiên theo ví), Toast |
 | `e2e/` | Playwright: `flows.spec.ts`, `a11y.spec.ts`, `anvil-wallet.ts` (ví test nối Anvil — chỉ dùng trong test) |

@@ -1,7 +1,8 @@
 """Mua bán (§6.5, §6.6, §6.7): báo giá theo tiến độ, license on-chain, doanh thu đã chia.
 
-Người mua tự gửi `approve` + `buy(campaignId, maxPrice)` bằng ví của họ (Core/MetaMask, hoặc CLI ở local);
-backend không giữ tiền và không mua hộ.
+Mặc định người mua chỉ ký (Buy + permit) và relayer gửi `buyWithSig` (sponsor_service, nền tảng trả phí mạng);
+vẫn có thể tự gửi `approve` + `buy(campaignId, maxPrice)` (CLI ở local). Backend không giữ tiền: token đi thẳng từ
+ví người mua vào hợp đồng.
 """
 from __future__ import annotations
 

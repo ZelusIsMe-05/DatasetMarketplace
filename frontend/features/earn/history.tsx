@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { MyContributions, RevokeResponse } from "@/types/api";
-import { signTyped } from "@/lib/browserWallet";
+import { describeChainError } from "@/lib/chainErrors";
 import { formatDateTime } from "@/lib/format";
 import { qk } from "@/hooks/queries";
 import { useContributor } from "@/hooks/useSessions";
@@ -91,13 +91,13 @@ function RevokeDialog({ item, onClose }: { item: Item | null; onClose: () => voi
   };
 
   const revoke = async () => {
-    if (!item || item.onchain_id === null || !c.api || !c.account) return;
+    if (!item || item.onchain_id === null || !c.api || !c.signer) return;
     const set = (a: TxStepView["phase"], b: TxStepView["phase"], extra: Partial<TxStepView> = {}) =>
-      setSteps([{ label: "Ký yêu cầu thu hồi", phase: a }, { label: "Ghi thu hồi lên Avalanche, xóa audio", phase: b, note: "Không tốn AVAX", ...extra }]);
+      setSteps([{ label: "Ký yêu cầu thu hồi", phase: a }, { label: "Ghi nhận thu hồi, xóa audio", phase: b, ...extra }]);
     try {
       set("signing", "waiting");
       const td = await c.api.revokeTypedData(item.onchain_id);
-      const sig = await signTyped(c.account, td);
+      const sig = await c.signer.signTypedData(td);
       set("success", "pending");
       const res = await c.api.revoke(item.onchain_id, td.deadline, sig);
       set("success", "success", { hash: res.tx_hash });
@@ -105,7 +105,7 @@ function RevokeDialog({ item, onClose }: { item: Item | null; onClose: () => voi
       await qc.invalidateQueries({ queryKey: qk.mine(c.address ?? undefined) });
       toast.success("Đã thu hồi đồng thuận", res.audio_deleted ? "Audio và salt đã bị xóa khỏi máy chủ." : undefined);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Lỗi";
+      const msg = describeChainError(e);
       setSteps((s) => s?.map((x) => (x.phase === "signing" || x.phase === "pending" ? { ...x, phase: "error", error: msg } : x)) ?? null);
     }
   };

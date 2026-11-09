@@ -79,6 +79,18 @@
   }
 }
 
+/* Mẫu ảnh đại diện người dùng tự chọn trong Cài đặt (khóa trùng schemas.auth.AVATARS ở backend).
+   Đủ tối để chữ cái đầu màu trắng đọc rõ. */
+:root {
+  --avatar-sunset: linear-gradient(135deg, #c2410c, #9f1239);
+  --avatar-ocean: linear-gradient(135deg, #0369a1, #1e3a8a);
+  --avatar-forest: linear-gradient(135deg, #047857, #064e3b);
+  --avatar-berry: linear-gradient(135deg, #7e22ce, #4c1d95);
+  --avatar-amber: linear-gradient(135deg, #b45309, #7c2d12);
+  --avatar-slate: linear-gradient(135deg, #475569, #1e293b);
+  --avatar-rose: linear-gradient(135deg, #be185d, #831843);
+}
+
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;

@@ -8,7 +8,7 @@ import time
 from app.core.config import QcSettings
 from app.qc.checker import QualityChecker, Thresholds
 
-log = logging.getLogger("giongque.qc")
+log = logging.getLogger("datasetmarketplace.qc")
 
 
 class QcService:

@@ -37,7 +37,7 @@ export function moneyFromUnits(units: bigint, rate: number, symbol = "USDC"): Mo
     units: Number(units),
     vnd,
     display: `≈ ${formatVnd(vnd)}`,
-    token: `${formatTokenUnits(units)} ${symbol} trên Avalanche`,
+    token: `${formatTokenUnits(units)} ${symbol}`,
   };
 }
 

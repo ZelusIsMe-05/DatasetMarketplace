@@ -12,8 +12,6 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from dotenv import dotenv_values
-
 from app.blockchain.eip712 import sign_text, sign_typed
 from app.services import merkle
 from cli.api import Api, ApiError
@@ -23,18 +21,10 @@ from cli.state import CliState, Wallet
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
-def _default_admin_key() -> str | None:
-    if os.environ.get("GIONGQUE_ADMIN_KEY"):
-        return os.environ["GIONGQUE_ADMIN_KEY"]
-    env = BACKEND_DIR / f".env.{os.environ.get('NETWORK', 'local')}"
-    return dotenv_values(env).get("ADMIN_API_KEY") if env.exists() else None
-
-
 @dataclass
 class Ctx:
-    api_url: str = field(default_factory=lambda: os.environ.get("GIONGQUE_API", "http://127.0.0.1:8000"))
-    rpc_url: str = field(default_factory=lambda: os.environ.get("GIONGQUE_RPC", "http://127.0.0.1:8545"))
-    admin_key: str | None = field(default_factory=_default_admin_key)
+    api_url: str = field(default_factory=lambda: os.environ.get("DATASETMARKETPLACE_API", "http://127.0.0.1:8000"))
+    rpc_url: str = field(default_factory=lambda: os.environ.get("DATASETMARKETPLACE_RPC", "http://127.0.0.1:8386"))
     state: CliState = field(default_factory=CliState)
     _health: dict | None = None
     _chain: Chain | None = None
@@ -43,11 +33,6 @@ class Ctx:
 
     def public(self) -> Api:
         return Api(self.api_url)
-
-    def admin(self) -> Api:
-        if not self.admin_key:
-            raise ApiError(0, "admin_key", "Thiếu admin key: đặt GIONGQUE_ADMIN_KEY hoặc ADMIN_API_KEY trong backend/.env.local")
-        return Api(self.api_url, admin_key=self.admin_key)
 
     def health(self) -> dict:
         if self._health is None:
@@ -64,7 +49,7 @@ class Ctx:
         try:
             return self.state.wallet(name)
         except KeyError:
-            raise ApiError(0, "wallet", f"Chưa có ví '{name}'. Chạy: giongque wallet init-local (local) hoặc wallet import") from None
+            raise ApiError(0, "wallet", f"Chưa có ví '{name}'. Chạy: datasetmarketplace wallet init-local (local) hoặc wallet import") from None
 
     # ------------------------------------------------------------------ đăng nhập
 
@@ -81,7 +66,7 @@ class Ctx:
         sig = sign_text(w.private_key, ch["message"])
         res = api.post(
             "/auth/dev-login",
-            json={"email": email or f"{name}@giongque.local", "address": w.address, "nonce": ch["nonce"], "signature": sig},
+            json={"email": email or f"{name}@datasetmarketplace.local", "address": w.address, "nonce": ch["nonce"], "signature": sig},
         )
         self.state.set_session(name, self._session_scope(), res["access_token"], res["expires_at"], res["email"])
         return res
@@ -124,6 +109,26 @@ class Ctx:
         )
         res["prompt_text"] = p["text"]
         return res
+
+    # ------------------------------------------------------------------ chủ chiến dịch (§3 #28: không có admin)
+
+    def publish_snapshot(self, name: str, campaign_id: int) -> dict:
+        """Chủ chiến dịch xem bản tóm tắt, ký PublishSnapshot bằng ví của mình; relayer gửi publishSnapshotWithSig."""
+        api = self.user(name)
+        q = api.get(f"/campaigns/{campaign_id}/snapshot-quote")
+        sig = sign_typed(self.wallet(name).private_key, q["sign"]["typed_data"])
+        res = api.post(
+            f"/campaigns/{campaign_id}/snapshots",
+            json={"merkle_root": q["merkle_root"], "deadline": q["sign"]["deadline"], "signature": sig},
+        )
+        return res | {"quote": q}
+
+    def review_queue(self, name: str, campaign_id: int | None = None) -> list[dict]:
+        params = {"campaign_id": campaign_id} if campaign_id is not None else {}
+        return self.user(name).get("/creator/review", **params)
+
+    def review_decide(self, name: str, contribution_id: int, decision: str, note: str | None = None) -> dict:
+        return self.user(name).post(f"/creator/review/{contribution_id}", json={"decision": decision, "note": note})
 
     def claim_relayed(self, name: str, campaign_id: int) -> dict:
         api = self.user(name)

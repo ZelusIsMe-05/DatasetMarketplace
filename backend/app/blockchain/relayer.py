@@ -22,7 +22,7 @@ from app.blockchain.errors import decode_revert, message_for
 from app.core.errors import ChainError
 from app.models import RelayTx
 
-log = logging.getLogger("giongque.relayer")
+log = logging.getLogger("datasetmarketplace.relayer")
 
 
 @dataclass(frozen=True)

@@ -19,6 +19,7 @@ from sqlalchemy.engine import make_url
 
 from app.core.config import load_db_config
 from app.models.session import drop_all_data
+from app.services.storage import B2Storage, StorageError
 
 
 def _mask(url: str) -> str:
@@ -50,6 +51,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Database: {target_db}" + (f" (schema {cfg.database_schema})" if cfg.database_schema else ""))
     action = "GIỮ LẠI (--keep-audio)" if args.keep_audio else "sẽ xóa"
     print(f"Thư mục dữ liệu/audio {action} ({len(audio_dirs)}): " + (", ".join(p.name for p in audio_dirs) or "không có"))
+    if cfg.b2_bucket:
+        print(f"Audio trên Backblaze B2 {action}: bucket {cfg.b2_bucket}, mọi file có tiền tố {cfg.network}-")
     print("Hãy TẮT backend trước khi reset.")
     if not args.yes:
         if input('Gõ RESET để xác nhận: ').strip() != "RESET":
@@ -63,6 +66,14 @@ def main(argv: list[str] | None = None) -> int:
         for d in audio_dirs:
             shutil.rmtree(d)  # audio + (nếu dùng SQLite) file database
         print(f"✔ Đã xóa {len(audio_dirs)} thư mục dữ liệu/audio trong {cfg.storage_root}")
+        if cfg.b2_bucket:
+            try:
+                b2 = B2Storage(cfg.b2_key_id or "", cfg.b2_application_key or "", cfg.b2_bucket, prefix="")
+                n = b2.delete_prefix(f"{cfg.network}-")
+                print(f"✔ Đã xóa {n} phiên bản file audio trên B2 (bucket {cfg.b2_bucket})")
+            except StorageError as e:
+                print(f"[LỖI] Không xóa được audio trên B2: {e}. Database đã xóa — hãy chạy lại sau khi sửa cấu hình B2.")
+                return 1
     print("Xong. Lần chạy backend tiếp theo sẽ tạo lại bảng, nạp chiến dịch mẫu từ seed/ và đồng bộ lại từ chain.")
     return 0
 

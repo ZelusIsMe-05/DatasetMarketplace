@@ -23,9 +23,15 @@ SPEC_ENDPOINTS = [
     ("get", "/campaigns/{campaign_id}/terms"), ("post", "/consent"), ("post", "/campaigns/{campaign_id}/prompt"),
     ("post", "/contributions"), ("get", "/me/contributions"), ("get", "/me/claim-quote"), ("post", "/claim"),
     ("post", "/revoke"), ("post", "/datasets/{campaign_id}/download"), ("post", "/demo/faucet"),
-    ("post", "/admin/snapshot/{campaign_id}"), ("get", "/admin/review"),
+    # chủ chiến dịch duyệt vùng xám + ký công bố phiên bản (§3 #28: không có vai trò quản trị)
+    ("get", "/creator/review"), ("post", "/creator/review/{contribution_id}"),
+    ("get", "/campaigns/{campaign_id}/snapshot-quote"), ("post", "/campaigns/{campaign_id}/snapshots"),
+    # nền tảng trả phí mạng hộ (implementation-plan §3 #25)
+    ("get", "/fees"), ("get", "/campaigns/drafts/{draft_id}/create-quote"), ("post", "/campaigns/drafts/{draft_id}/create"),
+    ("get", "/campaigns/{campaign_id}/buy-quote"), ("post", "/campaigns/{campaign_id}/buy"),
+    ("get", "/creator/withdraw-quote"), ("post", "/creator/withdraw"),
+    ("get", "/campaigns/{campaign_id}/seed-withdraw-quote"), ("post", "/campaigns/{campaign_id}/withdraw-seed"),
 ]
-ADMIN = {"X-Admin-Key": "test-admin"}
 _tokens: dict[str, str] = {}
 
 
@@ -61,6 +67,15 @@ def create_campaign(client, chain, target_sec: int = 30, seed_vnd: int = 0) -> i
     cid = vc.events.CampaignCreated().process_receipt(r)[0]["args"]["campaignId"]
     ok(client.post("/campaigns/sync"))
     return int(cid)
+
+
+def publish(client, cid: int, who: str = "creator", key: str | None = None):  # noqa: ANN001, ANN201
+    """Chủ chiến dịch xem bản tóm tắt rồi ký PublishSnapshot; `key` khác để thử ký sai người."""
+    h = login(client, who)
+    q = ok(client.get(f"/campaigns/{cid}/snapshot-quote", headers=h))
+    sig = sign_typed(KEYS[key or who], q["sign"]["typed_data"])
+    return q, client.post(f"/campaigns/{cid}/snapshots", headers=h,
+                          json={"merkle_root": q["merkle_root"], "deadline": q["sign"]["deadline"], "signature": sig})
 
 
 def consent(client, who: str, cid: int) -> dict:  # noqa: ANN001
@@ -112,8 +127,17 @@ def test_one_email_one_wallet(app_client):
         return app_client.post("/auth/dev-login", json={"email": email, "address": ADDR[who], "nonce": ch["nonce"],
                                                         "signature": sign_text(KEYS[who], ch["message"])})
     assert dev("one@test.vn", "eve").status_code == 200
-    assert dev("one@test.vn", "laby").json()["error"]["code"] == "email_bound"
+    bound = dev("one@test.vn", "laby").json()["error"]
+    assert bound["code"] == "email_bound"
+    assert bound["details"]["bound_wallet"] == ADDR["eve"]  # để giao diện hướng dẫn nạp đúng ví này vào MetaMask
     assert dev("two@test.vn", "eve").json()["error"]["code"] == "wallet_taken"
+    # các lần sau chỉ cần email (Google): vào đúng phiên của ví đã gắn, không cần ký lại
+    again = ok(app_client.post("/auth/dev-login", json={"email": "ONE@test.vn"}))
+    assert again["wallet_address"] == ADDR["eve"]
+    assert ok(app_client.get("/auth/me", headers={"Authorization": f"Bearer {again['access_token']}"}))["email"] == "one@test.vn"
+    # email chưa gắn ví mà không kèm chữ ký ⇒ phải gắn ví ở lần đầu
+    assert app_client.post("/auth/dev-login", json={"email": "moi@test.vn"}).json()["error"]["code"] == "wallet_required"
+    assert app_client.post("/auth/dev-login", json={"email": "moi@test.vn", "address": ADDR["laby"]}).status_code == 400
     # chữ ký challenge của ví khác bị từ chối
     ch = ok(app_client.get("/auth/challenge", params={"address": ADDR["laby"]}))
     r = app_client.post("/auth/dev-login", json={"email": "x@test.vn", "address": ADDR["laby"], "nonce": ch["nonce"],
@@ -185,8 +209,17 @@ def test_full_business_flow(app_client, chain):  # noqa: PLR0915
     assert chain["token_c"].functions.balanceOf(ADDR["an"]).call() - b0 == q["pending"]["units"] - 100_000 == cl["received"]["units"]
 
     # snapshot + tải theo license; không có license thì 403; chữ ký dùng lại bị từ chối
-    snap = ok(c.post(f"/admin/snapshot/{cid}", headers=ADMIN))
-    assert c.post(f"/admin/snapshot/{cid}").status_code == 403
+    # chỉ chủ chiến dịch được công bố, bằng chữ ký của chính ví chủ chiến dịch
+    assert c.get(f"/campaigns/{cid}/snapshot-quote", headers=login(c, "an")).status_code == 403
+    assert c.get(f"/campaigns/{cid}/snapshot-quote").status_code == 401
+    assert download(c, "labx", cid).status_code == 409  # chưa công bố phiên bản nào
+    q0, bad = publish(c, cid, key="an")  # chữ ký không phải của chủ chiến dịch
+    assert bad.status_code == 401 and q0["version"] == 1 and q0["changed"] and q0["leaf_count"] == 3
+    _, r = publish(c, cid)
+    snap = ok(r)
+    assert snap["version"] == 1 and snap["leaf_count"] == 3
+    _, again = publish(c, cid)
+    assert again.status_code == 409  # không có gì thay đổi so với phiên bản hiện tại
     assert download(c, "laby", cid).status_code == 403
     m = ok(c.get(f"/datasets/{cid}/download-message", params={"buyer": ADDR["labx"]}))
     body = {"buyer": ADDR["labx"], "issued_at": m["issued_at"], "nonce": m["nonce"], "signature": sign_text(KEYS["labx"], m["message"])}
@@ -221,8 +254,14 @@ def test_full_business_flow(app_client, chain):  # noqa: PLR0915
         assert row.salt_hex is None and row.audio_sha256 is None and row.status == "revoked"
     assert rv["new_progress_bps"] < ok(c.get(f"/campaigns/{cid}/licenses/{ADDR['labx']}"))["progress_bps_at_purchase"]
     assert chain["token_c"].functions.balanceOf(ADDR["an"]).call() - b0 == cl["received"]["units"]
-    assert rv["new_snapshot_version"] == snap["version"] + 1
+    # phiên bản cũ bị khóa ngay; backend không tự công bố — chờ chủ chiến dịch ký bản mới
+    assert rv["new_snapshot_version"] is None
     assert c.get(link["download_url"].replace("http://testserver", "")).status_code == 410
+    assert ok(c.get(f"/campaigns/{cid}"))["latest_snapshot"]["status"] == "stale"
+    assert download(c, "labx", cid).status_code == 409
+    q2, r2 = publish(c, cid)
+    assert q2["latest_status"] == "stale" and q2["changed"]
+    assert ok(r2)["version"] == snap["version"] + 1 and ok(r2)["leaf_count"] == 2
     link2 = ok(download(c, "labx", cid))
     z2 = zipfile.ZipFile(io.BytesIO(c.get(link2["download_url"].replace("http://testserver", "")).content))
     ids2 = [e["contributionId"] for e in json.loads(z2.read("manifest.json"))["entries"]]
@@ -251,32 +290,105 @@ def test_direct_onchain_revoke_also_purges(app_client, chain):
     assert not c.container.storage.exists(path)
 
 
-def test_gray_queue_admin_approve(app_client, chain):
-    """Vùng xám -> hàng chờ -> admin duyệt -> ghi on-chain. (Nâng ngưỡng 'đạt' để buộc kết quả xám; inference vẫn thật.)"""
-    c = app_client
-    cid = create_campaign(c, chain, target_sec=100)
-    consent(c, "an", cid)
+def _gray(c, who: str, cid: int, fname: str, idx: int) -> dict:  # noqa: ANN001
+    """Nâng ngưỡng 'đạt' để buộc kết quả xám; inference vẫn thật."""
     th = c.container.qc.get().th
     old = th.min_align_pass
     th.min_align_pass = 1.01
     try:
-        res = ok(submit(c, "an", cid, "prompt06_hoaimy.wav", 6)[0])
+        res = ok(submit(c, who, cid, fname, idx)[0])
     finally:
         th.min_align_pass = old
     assert res["status"] == "gray" and res["onchain_id"] is None
-    queue = ok(c.get("/admin/review", headers=ADMIN))
-    assert any(i["id"] == res["id"] for i in queue)
-    assert c.get(f"/admin/review/{res['id']}/audio", headers=ADMIN).content[:4] == b"RIFF"
-    approved = ok(c.post(f"/admin/review/{res['id']}", headers=ADMIN, json={"decision": "approve"}))
+    return res
+
+
+def test_gray_queue_creator_review(app_client, chain):
+    """Vùng xám -> hàng chờ của CHỦ CHIẾN DỊCH -> nghe, duyệt (ghi on-chain) / loại (bắt buộc lý do). Không có admin."""
+    c = app_client
+    cid = create_campaign(c, chain, target_sec=100)
+    consent(c, "an", cid)
+    consent(c, "binh", cid)
+    g1 = _gray(c, "an", cid, "prompt06_hoaimy.wav", 6)
+    g2 = _gray(c, "binh", cid, "prompt05_namminh.wav", 5)
+    hc, ha = login(c, "creator"), login(c, "an")
+
+    # chỉ chủ chiến dịch thấy hàng chờ / nghe / quyết định
+    assert c.get("/creator/review").status_code == 401
+    assert c.get("/creator/review", params={"campaign_id": cid}, headers=ha).status_code == 403
+    assert ok(c.get("/creator/review", headers=ha)) == []  # "an" không tạo chiến dịch nào
+    assert c.get(f"/creator/review/{g1['id']}/audio", headers=ha).status_code == 403
+    assert c.post(f"/creator/review/{g1['id']}", headers=ha, json={"decision": "approve"}).status_code == 403
+    queue = ok(c.get("/creator/review", params={"campaign_id": cid}, headers=hc))
+    item = next(i for i in queue if i["id"] == g1["id"])
+    assert {g1["id"], g2["id"]} <= {i["id"] for i in queue} and item["qc"] and item["auto_approve_at"] > item["created_at"]
+    assert c.get(item["audio_path"], headers=hc).content[:4] == b"RIFF"
+    assert ok(c.get(f"/campaigns/{cid}"))["review"]["pending"] == 2
+
+    # loại phải có lý do; lý do hiện cho người đóng góp; audio bị xóa
+    assert c.post(f"/creator/review/{g2['id']}", headers=hc, json={"decision": "reject", "note": "  "}).status_code == 400
+    with c.container.sf() as s:
+        from app.models import Contribution
+
+        path2 = s.get(Contribution, g2["id"]).audio_path
+    rej = ok(c.post(f"/creator/review/{g2['id']}", headers=hc, json={"decision": "reject", "note": "Đọc sai câu"}))
+    assert rej["status"] == "rejected" and rej["onchain_id"] is None and not c.container.storage.exists(path2)
+    hist = ok(c.get("/me/contributions", headers=login(c, "binh")))
+    row = next(i for i in hist["contributions"] if i["id"] == g2["id"])
+    assert any("Đọc sai câu" in r for r in row["reasons"])
+    assert c.post(f"/creator/review/{g2['id']}", headers=hc, json={"decision": "approve"}).status_code == 409
+
+    approved = ok(c.post(f"/creator/review/{g1['id']}", headers=hc, json={"decision": "approve"}))
     assert approved["status"] == "registered" and approved["onchain_id"] is not None
+    stats = ok(c.get(f"/campaigns/{cid}"))["review"]
+    assert stats == {"pending": 0, "approved": 1, "auto_approved": 0, "rejected": 1}
+
+
+def test_gray_auto_approve_after_deadline(app_client, chain):
+    """Chủ chiến dịch không duyệt trong REVIEW_AUTO_APPROVE_HOURS ⇒ nền tảng tự duyệt (người đóng góp không bị treo)."""
+    from datetime import UTC, datetime, timedelta
+
+    c = app_client
+    cid = create_campaign(c, chain, target_sec=100)
+    consent(c, "an", cid)
+    g = _gray(c, "an", cid, "prompt07_namminh.wav", 7)
+    hours = c.container.settings.review_auto_approve_hours
+    assert hours > 0
+    assert c.container.review.auto_approve_overdue(now=datetime.now(UTC)) == 0  # chưa tới hạn
+    assert c.container.review.auto_approve_overdue(now=datetime.now(UTC) + timedelta(hours=hours, minutes=1)) >= 1
+    with c.container.sf() as s:
+        from app.models import Contribution
+
+        row = s.get(Contribution, g["id"])
+        assert row.status == "registered" and row.review_decision == "auto_approved" and row.onchain_id is not None
+    assert ok(c.get(f"/campaigns/{cid}"))["review"]["auto_approved"] == 1
+
+
+def test_profile_settings(app_client):
+    """Cài đặt tài khoản (§3 #31): tên hiển thị + mẫu ảnh đại diện; ví liên kết không đổi; chỉ chính chủ sửa được."""
+    c = app_client
+    h = login(c, "laby")
+    me = ok(c.get("/auth/me", headers=h))
+    assert me["display_name"] is None and me["avatar"] == "auto"
+    up = ok(c.patch("/auth/me", headers=h, json={"display_name": "  Lab \t  Nguyễn \n", "avatar": "ocean"}))
+    assert up["display_name"] == "Lab Nguyễn" and up["avatar"] == "ocean" and up["wallet_address"] == me["wallet_address"]
+    assert ok(c.get("/auth/me", headers=h))["display_name"] == "Lab Nguyễn"
+    assert ok(c.patch("/auth/me", headers=h, json={"avatar": "auto"}))["display_name"] == "Lab Nguyễn"  # trường bỏ trống giữ nguyên
+    assert ok(c.patch("/auth/me", headers=h, json={"display_name": ""}))["display_name"] is None
+    assert c.patch("/auth/me", headers=h, json={"avatar": "hacker"}).status_code == 422
+    assert c.patch("/auth/me", headers=h, json={"display_name": "x" * 41}).status_code == 422
+    assert c.patch("/auth/me", json={"display_name": "A"}).status_code == 401
+    # Trình duyệt hỏi trước (CORS preflight) cho PATCH — phải được phép, nếu không web không lưu được Cài đặt
+    pre = c.options("/auth/me", headers={"Origin": "http://localhost:3000", "Access-Control-Request-Method": "PATCH"})
+    assert pre.status_code == 200 and "PATCH" in pre.headers["access-control-allow-methods"]
 
 
 def test_faucet_and_relayer_status(app_client):
     r = ok(app_client.post("/demo/faucet", json={"address": ADDR["eve"], "amount_usdc": 10}))
     assert r["minted"]["units"] == 10 * 10**6
     assert app_client.post("/demo/faucet", json={"address": ADDR["eve"], "amount_usdc": 10**9}).status_code == 400
-    st = ok(app_client.get("/admin/relayer", headers=ADMIN))
-    assert st["qc_oracle_matches"] and not st["low_balance"]
+    h = ok(app_client.get("/health"))
+    assert h["storage"] == "local"  # test không cấu hình Backblaze B2
 
 
 def test_mainnet_profile_hides_mock_and_dev_routes(app_client):

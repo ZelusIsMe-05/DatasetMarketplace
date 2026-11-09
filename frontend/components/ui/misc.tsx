@@ -69,13 +69,14 @@ export interface StepDef {
 }
 
 /** Chỉ báo các bước (onboarding, wizard). */
-export function Stepper({ steps, current }: { steps: StepDef[]; current: number }) {
+/** align="center": nhãn căn giữa dưới thanh tiến độ của từng bước (dùng ở onboarding /earn). */
+export function Stepper({ steps, current, align = "start" }: { steps: StepDef[]; current: number; align?: "start" | "center" }) {
   return (
     <ol className="flex w-full items-start gap-2" aria-label="Các bước">
       {steps.map((s, i) => {
         const state = i < current ? "done" : i === current ? "current" : "todo";
         return (
-          <li key={s.label} className="flex min-w-0 flex-1 flex-col gap-2" aria-current={state === "current" ? "step" : undefined}>
+          <li key={s.label} className={cn("flex min-w-0 flex-1 flex-col gap-2", align === "center" && "text-center")} aria-current={state === "current" ? "step" : undefined}>
             <div className="relative h-1.5 overflow-hidden rounded-full bg-surface-muted">
               <motion.div
                 className="absolute inset-0 origin-left rounded-full bg-gradient-to-r from-primary to-cyan"

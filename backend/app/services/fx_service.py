@@ -27,7 +27,7 @@ class FxService:
             units=int(units),
             vnd=vnd,
             display=f"≈ {format_vnd(vnd)}",
-            token=f"{format_token(int(units), self.settings.token_decimals)} {self.symbol} trên Avalanche",
+            token=f"{format_token(int(units), self.settings.token_decimals)} {self.symbol}",
         )
 
     def vnd_to_units(self, vnd: int) -> tuple[int, float]:

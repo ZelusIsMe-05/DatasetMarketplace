@@ -6,7 +6,7 @@ import { GOOGLE_CLIENT_ID } from "@/lib/config";
 interface GoogleId {
   accounts: {
     id: {
-      initialize: (cfg: { client_id: string; callback: (r: { credential: string }) => void; ux_mode?: string }) => void;
+      initialize: (cfg: { client_id: string; callback: (r: { credential: string }) => void; ux_mode?: string; button_auto_select?: boolean }) => void;
       renderButton: (el: HTMLElement, opts: Record<string, unknown>) => void;
     };
   };
@@ -24,7 +24,11 @@ const SCRIPT = "https://accounts.google.com/gsi/client";
 const noSubscribe = () => () => {};
 const isLoopbackIp = () => window.location.hostname === "127.0.0.1";
 
-/** Nút "Đăng nhập với Google" (Google Identity Services) — trả ID token cho backend xác minh. */
+// Google Identity Services chỉ giữ MỘT callback cho cả trang (initialize là toàn cục). Có thể có hai nút cùng lúc
+// (hộp "Đăng nhập" ở header + nút trên trang): nút gắn sau nhận kết quả; khi nó bị gỡ, nút gắn trước nhận lại.
+const mounted: (() => void)[] = [];
+
+/** Nút "Tiếp tục với Google" (Google Identity Services) — trả ID token cho backend xác minh. */
 export function GoogleSignIn({ onCredential, disabled }: { onCredential: (idToken: string) => void; disabled?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const cb = useRef(onCredential);
@@ -37,12 +41,34 @@ export function GoogleSignIn({ onCredential, disabled }: { onCredential: (idToke
 
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID || disabled || onIp) return;
+    let renderedWidth = 0;
+    const draw = () => {
+      if (!window.google || !box.current) return;
+      const width = Math.floor(Math.min(360, box.current.clientWidth));
+      if (width <= 0 || width === renderedWidth) return;
+      renderedWidth = width;
+      // GIS không hiển thị tên/email trên nút cỡ medium (personalized-button trong tài liệu Google).
+      window.google.accounts.id.renderButton(box.current, { type: "standard", theme: "outline", size: "medium", text: "continue_with", shape: "pill", locale: "vi", width });
+    };
     const render = () => {
       if (!window.google || !box.current) return;
-      window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: (r) => cb.current(r.credential) });
-      window.google.accounts.id.renderButton(box.current, { theme: "outline", size: "large", text: "continue_with", shape: "pill", locale: "vi", width: 320 });
+      window.google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: (r) => cb.current(r.credential), button_auto_select: false });
+      draw();
     };
-    if (window.google) return render();
+    // Hộp thoại được mở sau effect: vẽ khi khung có chiều rộng, rồi cập nhật khi đổi kích thước màn hình.
+    const observer = new ResizeObserver(draw);
+    if (box.current) observer.observe(box.current);
+    mounted.push(render);
+    const release = () => {
+      observer.disconnect();
+      const i = mounted.indexOf(render);
+      if (i >= 0) mounted.splice(i, 1);
+      mounted.at(-1)?.(); // trả quyền nhận kết quả cho nút còn lại gần nhất
+    };
+    if (window.google) {
+      render();
+      return release;
+    }
     let s = document.querySelector<HTMLScriptElement>(`script[src="${SCRIPT}"]`);
     if (!s) {
       s = document.createElement("script");
@@ -56,6 +82,7 @@ export function GoogleSignIn({ onCredential, disabled }: { onCredential: (idToke
     return () => {
       s?.removeEventListener("load", render);
       s?.removeEventListener("error", onError);
+      release();
     };
   }, [disabled, onIp]);
 
@@ -81,5 +108,6 @@ export function GoogleSignIn({ onCredential, disabled }: { onCredential: (idToke
     );
   }
   if (failed) return <p className="text-sm text-danger-ink">Không tải được Google Sign-In. Kiểm tra kết nối mạng.</p>;
-  return <div ref={box} className="min-h-11" aria-label="Đăng nhập với Google" />;
+  // data-google-button: nội dung bên trong do Google tự vẽ (iframe hoặc div) — e2e loại vùng này khỏi lượt quét axe
+  return <div ref={box} className="flex min-h-12 w-full items-center justify-center" aria-label="Tiếp tục với Google" data-google-button />;
 }

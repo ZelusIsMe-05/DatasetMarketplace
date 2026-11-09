@@ -17,7 +17,6 @@ from app.core.config import SEED_DIR, Settings
 from app.models import KvState
 from app.models.session import make_engine, make_session_factory, run_migrations, sqlite_url
 from app.qc.service import QcService
-from app.services.admin_service import AdminService
 from app.services.auth_service import AuthService
 from app.services.campaign_service import CampaignService
 from app.services.consent_service import ConsentService
@@ -28,10 +27,12 @@ from app.services.fx_service import FxService
 from app.services.marketplace_service import MarketplaceService
 from app.services.prompt_service import PromptService
 from app.services.revoke_service import RevokeService
+from app.services.review_service import ReviewService
 from app.services.rewards_service import RewardsService
-from app.services.storage import PrivateStorage
+from app.services.sponsor_service import SponsorService
+from app.services.storage import AudioStorage, B2Storage, PrivateStorage, StorageError
 
-log = logging.getLogger("giongque.container")
+log = logging.getLogger("datasetmarketplace.container")
 
 
 class StartupError(RuntimeError):
@@ -51,7 +52,7 @@ class Container:
     indexer: EventIndexer
     qc: QcService
     fx: FxService
-    storage: PrivateStorage
+    storage: AudioStorage
     auth: AuthService
     campaigns: CampaignService
     consent: ConsentService
@@ -61,7 +62,8 @@ class Container:
     revoke: RevokeService
     market: MarketplaceService
     datasets: DatasetService
-    admin: AdminService
+    review: ReviewService
+    sponsor: SponsorService
     faucet: FaucetService | None
 
 
@@ -102,6 +104,39 @@ def check_deployment_stamp(sf: sessionmaker[Session], fingerprint: str, chain_id
             )
 
 
+def check_chain_not_rewound(last_indexed_block: int, head: int) -> None:
+    """Chain lùi về trạng thái cũ (Anvil tắt không bằng Ctrl+C nên chỉ còn bản lưu trước đó) nhưng database đã đọc
+    sự kiện tới block cao hơn ⇒ indexer sẽ BỎ QUA sự kiện mới trong khoảng block đó. Dấu deployment không phát hiện
+    được vì block deploy vẫn giống nhau — chặn ngay."""
+    if last_indexed_block > head:
+        raise StartupError(
+            f"Chain đang ở block {head} nhưng database đã đọc sự kiện tới block {last_indexed_block}: chain đã quay về "
+            "trạng thái cũ (thường do cửa sổ Anvil bị đóng mà không bấm Ctrl+C, nên lần lưu gần nhất là bản cũ). "
+            "Local: chạy scripts\\reset-local.bat rồi start-anvil persist → deploy-local → start-backend. "
+            "Fuji/mainnet: kiểm tra RPC_URL có trỏ đúng chain không."
+        )
+
+
+def build_storage(settings: Settings, data_dir: Path, fingerprint: str) -> AudioStorage:
+    """Kho audio riêng tư: Backblaze B2 khi đủ cấu hình (B2_BUCKET + khóa), ngược lại thư mục trên đĩa (§3 #29).
+
+    Trên B2 mỗi deployment có tiền tố riêng `<network>-<fingerprint>` — giống tên thư mục dữ liệu ở đĩa.
+    """
+    if settings.b2_bucket:
+        storage = B2Storage(
+            settings.b2_key_id or "", settings.b2_application_key or "", settings.b2_bucket,
+            prefix=f"{settings.network.name}-{fingerprint}",
+        )
+        try:
+            storage.check()
+        except StorageError as e:
+            raise StartupError(str(e)) from e
+        return storage
+    if settings.b2_key_id or settings.b2_application_key:
+        log.warning("Backblaze B2 chưa đủ cấu hình (thiếu B2_BUCKET) — audio đang lưu trên đĩa của máy chủ")
+    return PrivateStorage(data_dir)
+
+
 def build_container(settings: Settings, qc_service: QcService | None = None) -> Container:
     chain = ChainClient(settings.rpc_url, settings.voice_campaigns, settings.token)
     try:
@@ -110,6 +145,14 @@ def build_container(settings: Settings, qc_service: QcService | None = None) -> 
         raise StartupError(f"Không kết nối được RPC {settings.rpc_url}: {type(e).__name__}") from e
     if chain_id != settings.network.chain_id:
         raise StartupError(f"RPC trả chain id {chain_id}, cấu hình NETWORK={settings.network.name} cần {settings.network.chain_id}")
+    if settings.is_local:
+        # Hardhat/Scaffold-ETH của dự án khác cũng là chain 31337 (thường ở cổng 8545): không được nhận nhầm.
+        client = str(chain.w3.client_version)
+        if not client.lower().startswith("anvil"):
+            raise StartupError(
+                f"Node ở {settings.rpc_url} là \"{client}\", không phải Anvil của dự án. "
+                "Chạy scripts\\start-anvil.bat (cổng 8386) hoặc sửa RPC_URL."
+            )
     if not chain.has_code(chain.address):
         raise StartupError(f"Không có contract VoiceCampaigns tại {chain.address} (đã deploy chưa?)")
     if not chain.has_code(chain.token_address):
@@ -122,8 +165,11 @@ def build_container(settings: Settings, qc_service: QcService | None = None) -> 
 
     fingerprint = deployment_fingerprint(chain, settings.deploy_block)
     data_dir = settings.storage_root / f"{settings.network.name}-{fingerprint}"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    db_url = settings.database_url or sqlite_url(data_dir / "giongque.db")
+    # Thư mục trên đĩa chỉ cần khi còn dữ liệu cục bộ: SQLite (không có DATABASE_URL). Audio trên đĩa (không có B2) thì
+    # PrivateStorage tự tạo. Neon + Backblaze B2 ⇒ backend không ghi gì vào storage/.
+    if not settings.database_url:
+        data_dir.mkdir(parents=True, exist_ok=True)
+    db_url = settings.database_url or sqlite_url(data_dir / "datasetmarketplace.db")
     try:
         run_migrations(db_url, settings.database_schema)
     except Exception as e:  # noqa: BLE001
@@ -136,9 +182,11 @@ def build_container(settings: Settings, qc_service: QcService | None = None) -> 
     relayer = pool.get(settings.relayer_key)
     qc_signer = pool.get(settings.qc_oracle_key)
     indexer = EventIndexer(chain, sf, start_block=settings.deploy_block, chunk_blocks=settings.log_chunk_blocks)
+    with sf() as s:
+        check_chain_not_rewound(indexer.last_block(s), chain.block_number())
     qc = qc_service or QcService(settings.qc)
     fx = FxService(settings, symbol="USDC" if symbol == "USDC" else symbol)
-    storage = PrivateStorage(data_dir)
+    storage = build_storage(settings, data_dir, fingerprint)
 
     campaigns = CampaignService(settings, sf, chain, indexer, fx, qc)
     contributions = ContributionService(settings, sf, chain, qc_signer, indexer, qc, storage, fx)
@@ -165,7 +213,8 @@ def build_container(settings: Settings, qc_service: QcService | None = None) -> 
         revoke=RevokeService(sf, chain, relayer, indexer, storage, fx),
         market=MarketplaceService(sf, chain, indexer, fx),
         datasets=datasets,
-        admin=AdminService(settings, sf, chain, relayer, qc_signer, indexer, contributions, storage, fx),
+        review=ReviewService(settings, sf, contributions, storage),
+        sponsor=SponsorService(settings, sf, chain, relayer, indexer, fx, campaigns),
         faucet=FaucetService(settings, chain, relayer, fx) if settings.network.allow_mock_token else None,
     )
     # Metadata chiến dịch mẫu của SeedDemo (chỉ local/Fuji) rồi đồng bộ sự kiện để liên kết
@@ -180,6 +229,6 @@ def build_container(settings: Settings, qc_service: QcService | None = None) -> 
     log.info(
         "Container sẵn sàng: %s chain=%s database=%s%s audio=%s",
         settings.network.name, chain_id, engine.dialect.name,
-        f" (schema {settings.database_schema})" if settings.database_schema else "", data_dir / "audio",
+        f" (schema {settings.database_schema})" if settings.database_schema else "", storage.describe(),
     )
     return c

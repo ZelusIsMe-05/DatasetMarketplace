@@ -5,9 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import { shortHex } from "@/lib/format";
 import { useContributor } from "@/hooks/useSessions";
-import { avatarGradient } from "@/components/wallet/connect-wallet";
+import { Avatar, useProfile } from "@/features/auth/profile";
 import { Skeleton } from "@/components/ui/states";
 import { Onboarding } from "@/features/earn/onboarding";
 
@@ -29,6 +28,7 @@ function useMounted() {
 export function RequireContributor({ children }: { children: ReactNode }) {
   const c = useContributor();
   const mounted = useMounted();
+  // Phiên cũ (vd. database đã reset) được AuthProvider kiểm tra lúc tải trang và xóa khi API trả 401.
   if (!mounted) {
     return (
       <div className="py-12" role="status" aria-label="Đang tải">
@@ -43,7 +43,6 @@ export function RequireContributor({ children }: { children: ReactNode }) {
         <div className="mx-auto mb-10 max-w-xl text-center">
           <span className="text-sm font-semibold text-primary">Kiếm tiền bằng giọng nói</span>
           <h1 className="mt-2 text-h1">Thiết lập trong khoảng một phút</h1>
-          <p className="text-lead mt-3">Không cần AVAX, không cần cài ví. Mọi số tiền hiển thị bằng VNĐ.</p>
         </div>
         <Onboarding />
       </div>
@@ -55,6 +54,7 @@ export function RequireContributor({ children }: { children: ReactNode }) {
 /** Khung khu vực người đóng góp: luôn render trang con; thanh điều hướng con chỉ hiện khi đã sẵn sàng. */
 export function EarnShell({ children }: { children: ReactNode }) {
   const c = useContributor();
+  const profile = useProfile();
   const pathname = usePathname();
   const mounted = useMounted();
   return (
@@ -71,15 +71,31 @@ export function EarnShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
-        <div className="flex items-center gap-3 text-sm">
-          <span className="size-8 rounded-full" style={{ background: avatarGradient(c.address!) }} aria-hidden />
-          <div className="leading-tight">
-            <p className="font-semibold text-ink">{c.session?.email}</p>
-            <p className="font-mono text-xs text-ink-muted">Ví {shortHex(c.address!)}</p>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          <Avatar name={profile.name} avatar={profile.avatar} address={c.address} />
+          <div className="min-w-0 leading-tight">
+            <p className="truncate font-semibold text-ink">{profile.name}</p>
+            <p className="text-xs text-ink-muted" data-wallet={c.address} data-testid="earn-wallet-kind">
+              {c.kind === "metamask" ? "MetaMask" : "Ví trình duyệt"}
+            </p>
           </div>
-          <button type="button" onClick={c.lockBrowserWallet} className="ml-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ink-muted hover:bg-surface-muted hover:text-ink">
-            Khóa ví
-          </button>
+          <div className="flex items-center gap-1">
+            {c.kind === "browser" && (
+              <button type="button" onClick={c.lockBrowserWallet} className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ink-muted hover:bg-surface-muted hover:text-ink">
+                Khóa ví
+              </button>
+            )}
+            {/* Đổi cách ký cho CÙNG ví đã gắn: chỉ có ý nghĩa khi ví trình duyệt trên máy này chính là ví đó */}
+            {c.isBrowserWallet && (
+              <button
+                type="button"
+                onClick={() => c.setEarnWallet(c.kind === "metamask" ? "browser" : "metamask")}
+                className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ink-muted hover:bg-surface-muted hover:text-ink"
+              >
+                {c.kind === "metamask" ? "Dùng ví trình duyệt" : "Dùng MetaMask"}
+              </button>
+            )}
+          </div>
         </div>
       </div>}
       {children}

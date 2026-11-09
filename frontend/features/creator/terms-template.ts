@@ -7,7 +7,7 @@ Bằng việc ký thông điệp đồng thuận (EIP-712) cho chiến dịch n�
 Bản ghi giọng nói của bạn được dùng để huấn luyện và đánh giá mô hình nhận dạng tiếng nói tiếng Việt theo mô tả của chiến dịch. Người mua không được dùng giọng của bạn để giả mạo danh tính.
 
 ## 2. Dữ liệu và lưu trữ
-Chỉ lưu bản ghi câu mẫu, câu mẫu tương ứng và địa chỉ ví. Audio lưu trên máy chủ riêng tư, không bao giờ đưa lên blockchain; trên chain chỉ có mã cam kết có salt và số giây hợp lệ.
+Chỉ lưu bản ghi câu mẫu, câu mẫu tương ứng và địa chỉ ví. Audio lưu trong kho riêng tư của nền tảng (máy chủ hoặc Backblaze B2, mã hóa khi lưu), không bao giờ đưa lên blockchain; trên chain chỉ có mã cam kết có salt và số giây hợp lệ. Nếu máy chấm chưa chắc chắn về một bản ghi, người tạo chiến dịch được nghe lại bản ghi đó để duyệt hoặc loại (khi loại phải ghi lý do cho bạn).
 
 ## 3. Thu nhập
 Bạn được chia doanh thu mỗi lần dataset được bán, theo số giây giọng nói còn hiệu lực tại thời điểm bán.

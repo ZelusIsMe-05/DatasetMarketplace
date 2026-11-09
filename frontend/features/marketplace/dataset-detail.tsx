@@ -100,14 +100,18 @@ export function DatasetDetail({ params }: { params: Promise<{ id: string }> }) {
               <div className="mt-3 flex flex-col gap-2 text-sm">
                 <p>
                   <b>v{c.latest_snapshot.version}</b> · {c.latest_snapshot.leaf_count} bản ghi · {formatDuration(c.latest_snapshot.total_sec)} ·{" "}
-                  <Badge tone={c.latest_snapshot.status === "published" ? "success" : "neutral"}>{c.latest_snapshot.status === "published" ? "đang phát hành" : c.latest_snapshot.status}</Badge>
+                  <Badge tone={c.latest_snapshot.status === "published" ? "success" : "warning"}>{c.latest_snapshot.status === "published" ? "đang phát hành" : c.latest_snapshot.status === "stale" ? "đã khóa, chờ chủ chiến dịch công bố lại" : c.latest_snapshot.status}</Badge>
                 </p>
                 <p className="flex items-center gap-1 font-mono text-xs text-ink-muted">Merkle root {shortHex(c.latest_snapshot.merkle_root, 12, 8)} <CopyButton value={c.latest_snapshot.merkle_root} /></p>
                 <a className="w-fit font-semibold text-primary hover:underline" href={`${API_URL}/datasets/${c.id}/snapshots/${c.latest_snapshot.version}`} target="_blank" rel="noreferrer">Xem manifest công khai</a>
               </div>
             ) : (
-              <p className="mt-3 text-ink-muted">Chưa có phiên bản nào được công bố.</p>
+              <p className="mt-3 text-ink-muted">Chủ chiến dịch chưa công bố phiên bản nào.</p>
             )}
+            <p className="mt-3 text-caption">
+              Chủ chiến dịch tự duyệt bản ghi máy chấm chưa chắc chắn: {c.review.approved} duyệt · {c.review.auto_approved} tự duyệt khi quá hạn ·{" "}
+              {c.review.rejected} loại{c.review.pending ? ` · ${c.review.pending} đang chờ` : ""}.
+            </p>
           </Card>
         </div>
         <aside id="buy" className="scroll-mt-24 lg:sticky lg:top-24 lg:self-start" aria-label="Mua bộ dữ liệu">

@@ -139,4 +139,5 @@ class RevokeResponse(BaseModel):
     audio_deleted: bool
     new_progress_bps: int
     new_price: Money
+    # Phiên bản đang hợp lệ sau thu hồi; None = phiên bản cũ đã bị khóa, chờ chủ chiến dịch ký công bố bản mới
     new_snapshot_version: int | None

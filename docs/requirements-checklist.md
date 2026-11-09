@@ -16,7 +16,7 @@ Trạng thái: **I** = đã triển khai · **T** = có test tự động · **L
 | C9 | `withdraw` (người tạo, nền tảng, ví nhận phí), `withdrawSeed` sau hạn | I T L | `test_SeedFundPaysEarlyContributorsAndRefundsCreator` |
 | C10 | `publishSnapshot` Merkle root | I T L | `test_PublishSnapshotEmitsEvent`, tải + kiểm proof trong e2e |
 | C11 | Ngừng thu thập khi đủ mục tiêu / quá hạn; thu thập lại khi thu hồi tụt dưới mục tiêu | I T | `test_StopsCollecting…`, `test_ResumesCollectingAfterRevokeBelowTarget` |
-| C12 | Kịch bản §6.11: An 2h, Bình 3h → 650 → An rút + thu hồi → 510 → Bình 720 | I T L | Foundry test + `giongque demo scenario-611` (12/12 trên Anvil) |
+| C12 | Kịch bản §6.11: An 2h, Bình 3h → 650 → An rút + thu hồi → 510 → Bình 720 | I T L | Foundry test + `datasetmarketplace demo scenario-611` (12/12 trên Anvil) |
 | C13 | MockUSDC 6 decimals chỉ local/Fuji; Deploy/SeedDemo chặn mainnet | I T L | `tests/integration/test_mainnet_guards.py` (forge script thật trên chain id 43114) |
 
 ## Chức năng — Backend API (§11) — đủ 16 endpoint, kiểm bằng `test_swagger_has_all_spec_endpoints`
@@ -33,8 +33,8 @@ Trạng thái: **I** = đã triển khai · **T** = có test tự động · **L
 | `POST /revoke` | I T L | xóa audio + salt (kiểm trên đĩa trong test) |
 | `POST /datasets/{id}/download` | I T L | license on-chain + link có hạn; zip kèm proof Merkle |
 | `POST /demo/faucet` | I T L | 404 khi mainnet (`test_mainnet_profile_hides_mock_and_dev_routes`) |
-| `POST /admin/snapshot/{id}`, `GET /admin/review` | I T L | `X-Admin-Key` |
-| Bổ sung: `/health`, `/auth/challenge`, `/auth/dev-login` (chỉ local), `/auth/me`, `/consent/typed-data`, `/consent/status`, `/revoke/typed-data`, `/campaigns/drafts`, `/campaigns/sync`, `/campaigns/{id}/price`, `/revenue`, `/licenses/{addr}`, `/samples/{id}`, `/metadata/{id}`, `/datasets/{id}/download-message`, `/datasets/files/{token}`, `/datasets/{id}/snapshots/{v}`, `/admin/review/{id}` (+`/audio`), `/admin/relayer`, `/admin/sync` | I T L | xem Swagger |
+| ~~`POST /admin/snapshot/{id}`, `GET /admin/review`~~ → `GET /creator/review`, `POST /creator/review/{id}`, `GET /campaigns/{id}/snapshot-quote`, `POST /campaigns/{id}/snapshots` | I T | Không có admin (implementation-plan §3 #28): chỉ người tạo chiến dịch; công bố cần chữ ký `PublishSnapshot` (`test_full_business_flow`, `test_gray_queue_creator_review`) |
+| Bổ sung: `/health`, `/auth/challenge`, `/auth/dev-login` (chỉ local), `/auth/me`, `/consent/typed-data`, `/consent/status`, `/revoke/typed-data`, `/campaigns/drafts`, `/campaigns/sync`, `/campaigns/{id}/price`, `/revenue`, `/licenses/{addr}`, `/samples/{id}`, `/metadata/{id}`, `/datasets/{id}/download-message`, `/datasets/files/{token}`, `/datasets/{id}/snapshots/{v}`, `/creator/review/{id}/audio` (không còn `/admin/*`, §3 #28) | I T L | xem Swagger |
 
 ## Chức năng — QC (§10)
 | # | Bước | Trạng thái | Bằng chứng |
@@ -45,7 +45,7 @@ Trạng thái: **I** = đã triển khai · **T** = có test tự động · **L
 | Q4 | wav2vec2 tiếng Việt CTC (`nguyenvulebinh/wav2vec2-base-vietnamese-250h`), CPU | I T L | 8 bản đọc thật đều `pass`, CER 0.00 |
 | Q5 | CER (jiwer) trên văn bản chuẩn hóa NFC | I T L | unit + `test_wrong_sentence_rejected` |
 | Q6 | Forced alignment `torchaudio.functional.forced_align` + điểm từng từ | I T L | đọc thiếu nửa câu không `pass` |
-| Q7 | pass / gray / reject; gray → hàng chờ duyệt tay | I T L | `test_gray_queue_admin_approve` |
+| Q7 | pass / gray / reject; gray → hàng chờ của người tạo chiến dịch (duyệt / loại kèm lý do; quá hạn tự duyệt) | I T | `test_gray_queue_creator_review`, `test_gray_auto_approve_after_deadline` |
 | Q8 | Chống trùng: câu đã đọc, audio trùng, commitment | I T L | demo e2e |
 | Q9 | Model nạp một lần, dùng lại; chạy độc lập bằng CMD | I L | `QcService`, `python -m app.qc`, `scripts\qc-check.bat` |
 | Q10 | Định dạng trình duyệt (webm/opus) | I T | `test_browser_webm_opus_decodes_and_passes` |
@@ -62,5 +62,5 @@ Trạng thái: **I** = đã triển khai · **T** = có test tự động · **L
 | N6 | Rate limit, CORS, health check, xử lý lỗi, log an toàn | I T L |
 | N7 | Chạy bằng Windows CMD | I L (`setup` chưa chạy lại từ máy trắng; các script còn lại đã chạy thật) |
 | N8 | CLI cho mọi nghiệp vụ chính | I L |
-| N9 | Frontend đầy đủ hai trải nghiệm (Kiếm tiền / Đặt hàng–Mua) + quản trị, hiển thị VNĐ | I T L (Playwright e2e 7/7, axe 0 vi phạm, xem `docs/frontend-design-system.md`) |
+| N9 | Frontend đầy đủ hai trải nghiệm (Kiếm tiền / Đặt hàng–Mua), người tạo duyệt vùng xám + ký công bố phiên bản (không có trang quản trị), hiển thị VNĐ | I T L (Playwright e2e 7/7, axe 0 vi phạm, xem `docs/frontend-design-system.md`) |
 | N10 | Deploy Fuji + verify Snowtrace | **F** — chưa làm, cần AVAX faucet và sự cho phép |

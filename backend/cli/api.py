@@ -13,13 +13,11 @@ class ApiError(Exception):
 
 
 class Api:
-    def __init__(self, base_url: str, token: str | None = None, admin_key: str | None = None, timeout: float = 180):
+    def __init__(self, base_url: str, token: str | None = None, timeout: float = 180):
         self.base = base_url.rstrip("/")
         headers = {}
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        if admin_key:
-            headers["X-Admin-Key"] = admin_key
         self.http = httpx.Client(base_url=self.base, headers=headers, timeout=timeout)
 
     def _handle(self, r: httpx.Response) -> Any:

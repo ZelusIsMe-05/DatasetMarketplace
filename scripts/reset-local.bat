@@ -9,6 +9,7 @@ pushd "%BACKEND%"
 set RC=%ERRORLEVEL%
 popd
 if not "%RC%"=="0" exit /b %RC%
+if exist "%CONTRACTS%\.anvil\anvil-state.json" del "%CONTRACTS%\.anvil\anvil-state.json"
 if exist "%ROOT%\storage\anvil-state.json" del "%ROOT%\storage\anvil-state.json"
 echo.
 echo Tiep theo (moi lenh mot cua so CMD):

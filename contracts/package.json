@@ -1,5 +1,5 @@
 {
-  "name": "giongque-contracts",
+  "name": "datasetmarketplace-contracts",
   "private": true,
   "description": "Solidity dependencies for Foundry (OpenZeppelin v5)",
   "dependencies": {

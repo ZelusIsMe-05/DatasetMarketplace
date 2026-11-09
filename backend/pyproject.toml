@@ -3,13 +3,13 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "giongque-backend"
+name = "datasetmarketplace-backend"
 version = "0.1.0"
 description = "Dataset Marketplace – Vietnamese Voice Dataset Marketplace on Avalanche (backend, QC, relayer, CLI)"
 requires-python = ">=3.11"
 
 [project.scripts]
-giongque = "cli.main:app"
+datasetmarketplace = "cli.main:app"
 
 [tool.setuptools.packages.find]
 include = ["app*", "cli*"]

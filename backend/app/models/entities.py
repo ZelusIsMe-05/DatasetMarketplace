@@ -40,6 +40,9 @@ class User(Base, TimestampMixin):
     wallet_address: Mapped[str] = mapped_column(String(42), unique=True, index=True)
     auth_provider: Mapped[str] = mapped_column(String(16))  # google | dev
     google_sub: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    # Cài đặt tài khoản do người dùng tự đặt (implementation-plan §3 #31); KHÔNG lấy tên/ảnh từ Google
+    display_name: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    avatar: Mapped[str | None] = mapped_column(String(16), nullable=True)  # khóa mẫu ảnh đại diện, xem schemas.auth.AVATARS
 
 
 class AuthChallenge(Base):
@@ -149,6 +152,9 @@ class Contribution(Base, TimestampMixin):
     seed_paid_units: Mapped[str] = mapped_column(String(80), default="0")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Duyệt vùng xám bởi CHỦ CHIẾN DỊCH (§3 #28): approved | rejected | auto_approved (quá hạn chưa duyệt)
+    review_decision: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoke_tx_hash: Mapped[str | None] = mapped_column(String(66), nullable=True)
 

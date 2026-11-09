@@ -13,7 +13,7 @@ export function SiteFooter() {
         </div>
         <FooterCol title="Người đóng góp" links={[["/earn", "Kiếm tiền bằng giọng nói"], ["/earn/history", "Bản ghi của tôi"], ["/earn/earnings", "Thu nhập & rút tiền"]]} />
         <FooterCol title="Người mua & người tạo" links={[["/explore", "Khám phá bộ dữ liệu"], ["/library", "Thư viện đã mua"], ["/create", "Tạo chiến dịch"]]} />
-        <FooterCol title="Vận hành" links={[["/admin", "Bảng điều khiển QC"], ["/#faq", "Câu hỏi thường gặp"]]} />
+        <FooterCol title="Hỗ trợ" links={[["/#faq", "Câu hỏi thường gặp"], ["/create", "Duyệt & công bố dữ liệu của bạn"]]} />
       </div>
       <div className="border-t border-line">
         <p className="container-page py-5 text-caption">

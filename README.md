@@ -7,9 +7,9 @@
 > Hướng dẫn chỉ dành cho cài đặt và chạy dự án: [`RUN_PROJECT.md`](RUN_PROJECT.md).
 >
 > **Tên sản phẩm:** *DatasetMarketplace*. Tên hiển thị giao diện nằm ở một chỗ:
-> `frontend/lib/brand.ts`. Các định danh kỹ thuật được **giữ nguyên** để không phá vỡ hệ thống: domain EIP-712 `GiongQue`
-> (khắc trong contract, đổi sẽ làm mọi chữ ký mất hiệu lực), lệnh CLI `giongque`, tên gói/thư mục `giongque-*`,
-> khóa `localStorage` `giongque.*` (đổi sẽ làm mất ví đã tạo trong trình duyệt).
+> `frontend/lib/brand.ts`. Các định danh kỹ thuật được **giữ nguyên** để không phá vỡ hệ thống: domain EIP-712 `DatasetMarketplace`
+> (khắc trong contract, đổi sẽ làm mọi chữ ký mất hiệu lực), lệnh CLI `datasetmarketplace`, tên gói/thư mục `datasetmarketplace-*`,
+> khóa `localStorage` `datasetmarketplace.*` (đổi sẽ làm mất ví đã tạo trong trình duyệt).
 
 ---
 
@@ -28,11 +28,11 @@ mỗi lần dataset được bán, contract **tự chia lại tiền** cho nhữ
 
 | Vai trò | Chức năng (backend + contract) | Lệnh CLI tương ứng |
 |---|---|---|
-| Người tạo chiến dịch | Soạn nháp (câu mẫu, điều khoản, giá VNĐ → USDC), `createCampaign`, quỹ mồi, rút phần chia | `campaign create`, `rewards withdraw`, `rewards withdraw-seed` |
+| Người tạo chiến dịch | Soạn nháp (câu mẫu, điều khoản, giá VNĐ → USDC), tạo chiến dịch chỉ bằng chữ ký (relayer gửi `createCampaignWithSig`, trừ quỹ mồi + phí xử lý), rút phần chia / quỹ mồi bằng chữ ký. **Chủ dữ liệu**: nghe và duyệt/loại bản ghi vùng xám (loại phải ghi lý do; quá 72 giờ tự duyệt), xem bản tóm tắt rồi **ký công bố phiên bản dataset** (`PublishSnapshot` → relayer gửi `publishSnapshotWithSig`) | `campaign create`, `rewards withdraw`, `rewards withdraw-seed`, `review list/approve/reject`, `dataset snapshot` |
 | Người đóng góp | Đăng nhập (Google / dev local), ký đồng thuận (relayer trả gas), nhận câu mẫu + token 60 giây, ghi âm, QC, xem tiền, rút tiền (relayer hoặc tự rút), thu hồi | `login`, `consent give`, `prompt get`, `contribution submit/record/list/revoke`, `rewards balance/quote/claim` |
-| Người mua | Xem giá theo tiến độ, `approve` + `buy(maxPrice)`, tải dataset đã ký chứng minh ví + kiểm tra Merkle | `market price/buy/license/revenue`, `dataset download/verify` |
-| QC oracle (server) | Silero VAD + wav2vec2 CTC + forced alignment + CER → `registerContribution`; đóng gói phiên bản + `publishSnapshot` | `qc check`, `dataset snapshot` |
-| Quản trị | Hàng chờ vùng xám, duyệt/loại, trạng thái relayer, đồng bộ sự kiện | `admin review/approve/reject/relayer/sync` |
+| Người mua | Xem giá theo tiến độ, mua chỉ bằng chữ ký (`Buy` + permit → relayer gửi `buyWithSig`; CLI vẫn `approve` + `buy`), tải dataset đã ký chứng minh ví + kiểm tra Merkle | `market price/buy/license/revenue`, `dataset download/verify` |
+| QC oracle (server) | Silero VAD + wav2vec2 CTC + forced alignment + CER → `registerContribution`; tính Merkle root cho bản tóm tắt phiên bản (người tạo ký) | `qc check` |
+| Nền tảng (tự động) | Không có vai trò quản trị (implementation-plan §3 #28). Vòng nền: đồng bộ sự kiện, tự duyệt vùng xám quá hạn, thử ghi lại bản ghi lỗi tạm thời; relayer trả phí mạng | `status` |
 | Demo (local/Fuji) | Faucet mUSDC, kịch bản end-to-end | `demo faucet`, `demo e2e`, `demo scenario-611` |
 
 ## 3. Công nghệ
@@ -54,7 +54,8 @@ CLI / Frontend ──HTTP──▶ FastAPI (app/api) ──▶ services ──�
                                                ├─▶ storage (audio riêng tư, xóa khi thu hồi)
                                                ├─▶ blockchain.relayer ──tx──▶ VoiceCampaigns.sol ──▶ (Mock)USDC
                                                └─▶ blockchain.indexer ◀─sự kiện─┘
-Người tạo / người mua ──ví của họ (Core/MetaMask, CLI)──▶ createCampaign · approve+buy · withdraw
+Người tạo / người mua ──chữ ký EIP-712 + permit (Core/MetaMask)──▶ API ──relayer──▶ createCampaignWithSig · buyWithSig · withdrawWithSig
+CLI demo ──ví dev của Anvil──▶ createCampaign · approve+buy · withdraw
 ```
 
 Sơ đồ chi tiết, luồng đóng góp, thu hồi và bảng bảo mật: [`docs/architecture.md`](docs/architecture.md).
@@ -80,11 +81,12 @@ Phân tích nghiệp vụ và **các chỗ đã sửa so với đề xuất** (k
 │   ├── app/blockchain/    # abi/, client (đọc), eip712, relayer (gửi tx), indexer (sự kiện), errors
 │   ├── app/qc/            # text (chuẩn hóa, CER), audio (giải mã), checker (pipeline), service, __main__ (CMD)
 │   ├── app/services/      # auth, campaign, consent, prompt, contribution, rewards, revoke, marketplace,
-│   │                      # dataset (Merkle, snapshot, tải, xóa khi thu hồi), admin, faucet, container
+│   │                      # dataset (Merkle, snapshot người tạo ký, tải, khóa khi thu hồi), review (người tạo
+│   │                      # duyệt vùng xám), storage (đĩa / Backblaze B2), sponsor, faucet, container
 │   ├── app/api/           # routers FastAPI
 │   ├── app/main.py        # create_app
 │   ├── alembic/           # migration
-│   ├── cli/               # lệnh giongque (main, ops, demo, chain, api, state)
+│   ├── cli/               # lệnh datasetmarketplace (main, ops, demo, chain, api, state)
 │   ├── scripts/           # export_abi.py, make_fixtures.py
 │   ├── tests/unit · tests/integration · tests/fixtures/audio (audio tiếng Việt thật)
 │   └── requirements*.txt · pyproject.toml · .env*.example
@@ -118,7 +120,7 @@ scripts\setup.bat
 ```
 
 `setup.bat` sẽ: kiểm tra Python/Node/Git → cài Foundry nếu thiếu → `npm install` + `forge install forge-std` +
-`forge build` → tạo `backend\.venv`, cài torch CPU 2.6 + `requirements-dev.txt` + CLI `giongque` → xuất ABI →
+`forge build` → tạo `backend\.venv`, cài torch CPU 2.6 + `requirements-dev.txt` + CLI `datasetmarketplace` → xuất ABI →
 tạo `backend\.env.local` từ mẫu → tải trước model QC → `npm install` cho frontend.
 
 Cài tay (tương đương):
@@ -193,60 +195,64 @@ curl http://127.0.0.1:8000/campaigns/0/terms
 ```cmd
 scripts\reset-local.bat     :: local: xóa database (SQLite hoặc Neon) + audio + trạng thái Anvil đã lưu, rồi hướng dẫn chạy lại
 scripts\reset-db.bat        :: chỉ database + audio của NETWORK hiện tại (hỏi gõ RESET; thêm --yes để không hỏi)
+scripts\fund-wallet.bat 0xDIA_CHI_VI   :: local: nạp 2.000 mUSDC cho ví MetaMask/Core của bạn để tự test (không cần ETH)
 ```
+
+Hướng dẫn tự test mua dữ liệu / tạo chiến dịch bằng ví thật: [RUN_PROJECT.md](RUN_PROJECT.md) mục 4.
 
 Reset **không xóa được blockchain**. Muốn "chỉ còn dữ liệu mẫu" ở local thì làm đủ: tắt backend + Anvil →
 `scripts\reset-local.bat` → `scripts\start-anvil.bat` → `scripts\deploy-local.bat` → `scripts\start-backend.bat`.
 Mainnet: script luôn từ chối. Fuji: cần thêm `--allow-fuji` — **không reset khi contract trên Fuji còn đang dùng**
 (chain không xóa được, dữ liệu off-chain sẽ mất vĩnh viễn); đổi contract thì dùng nhánh Neon / `DATABASE_SCHEMA` mới.
 
-## 10. CLI `giongque`
+## 10. CLI `datasetmarketplace`
 
-Lệnh có sẵn trong venv: `backend\.venv\Scripts\giongque.exe`, hoặc dùng wrapper **`scripts\giongque.bat`** (tự đặt UTF-8).
+Lệnh có sẵn trong venv: `backend\.venv\Scripts\datasetmarketplace.exe`, hoặc dùng wrapper **`scripts\datasetmarketplace.bat`** (tự đặt UTF-8).
 Mọi lệnh có `--help`. CLI gọi API thật và contract thật; ví test lấy từ mnemonic công khai của Anvil.
 
 ```cmd
-scripts\giongque.bat --help
-scripts\giongque.bat wallet init-local          :: deployer, buyer, creator, an, binh, labx, laby
-scripts\giongque.bat wallet list                :: số dư AVAX / mUSDC
-scripts\giongque.bat status
+scripts\datasetmarketplace.bat --help
+scripts\datasetmarketplace.bat wallet init-local          :: deployer, buyer, creator, an, binh, labx, laby
+scripts\datasetmarketplace.bat wallet list                :: số dư AVAX / mUSDC
+scripts\datasetmarketplace.bat status
 
 :: Người tạo
-scripts\giongque.bat demo faucet --as creator --amount 100
-scripts\giongque.bat campaign create --as creator --target-sec 30 --price-vnd 26000000 --seed-vnd 260000 --seed-vnd-per-min 13000
-scripts\giongque.bat campaign list
-scripts\giongque.bat campaign detail 1
-scripts\giongque.bat campaign terms 1
+scripts\datasetmarketplace.bat demo faucet --as creator --amount 100
+scripts\datasetmarketplace.bat campaign create --as creator --target-sec 30 --price-vnd 26000000 --seed-vnd 260000 --seed-vnd-per-min 13000
+scripts\datasetmarketplace.bat campaign list
+scripts\datasetmarketplace.bat campaign detail 1
+scripts\datasetmarketplace.bat campaign terms 1
 
 :: Người đóng góp (đăng nhập dev chỉ có khi NETWORK=local)
-scripts\giongque.bat login --as an
-scripts\giongque.bat consent sign 1 --as an --out an-consent.json
-scripts\giongque.bat consent submit 1 --as an --sig-file an-consent.json      :: (hoặc: consent give 1 --as an)
-scripts\giongque.bat prompt get 1 --as an
-scripts\giongque.bat contribution record 1 --as an --seconds 6               :: ghi âm TRỰC TIẾP từ micro
-scripts\giongque.bat contribution submit 1 --as an --audio tests\fixtures\audio\prompt00_hoaimy.wav --prompt-index 0
-scripts\giongque.bat contribution list --as an
-scripts\giongque.bat qc check tests\fixtures\audio\prompt00_hoaimy.wav "tôi muốn mở một tài khoản tiết kiệm có kỳ hạn sáu tháng"
+scripts\datasetmarketplace.bat login --as an
+scripts\datasetmarketplace.bat consent sign 1 --as an --out an-consent.json
+scripts\datasetmarketplace.bat consent submit 1 --as an --sig-file an-consent.json      :: (hoặc: consent give 1 --as an)
+scripts\datasetmarketplace.bat prompt get 1 --as an
+scripts\datasetmarketplace.bat contribution record 1 --as an --seconds 6               :: ghi âm TRỰC TIẾP từ micro
+scripts\datasetmarketplace.bat contribution submit 1 --as an --audio tests\fixtures\audio\prompt00_hoaimy.wav --prompt-index 0
+scripts\datasetmarketplace.bat contribution list --as an
+scripts\datasetmarketplace.bat qc check tests\fixtures\audio\prompt00_hoaimy.wav "tôi muốn mở một tài khoản tiết kiệm có kỳ hạn sáu tháng"
 
 :: Người mua
-scripts\giongque.bat demo faucet --as labx
-scripts\giongque.bat market price 1
-scripts\giongque.bat market buy 1 --as labx                                   :: approve + buy(maxPrice)
-scripts\giongque.bat market revenue 1
+scripts\datasetmarketplace.bat demo faucet --as labx
+scripts\datasetmarketplace.bat market price 1
+scripts\datasetmarketplace.bat market buy 1 --as labx                                   :: approve + buy(maxPrice)
+scripts\datasetmarketplace.bat market revenue 1
 
 :: Tiền & thu hồi
-scripts\giongque.bat rewards balance --as an
-scripts\giongque.bat rewards quote 1 --as an
-scripts\giongque.bat rewards claim 1 --as an                                  :: qua relayer, phí ≈ 2.600 ₫
-scripts\giongque.bat rewards claim 1 --as binh --direct                       :: tự rút, không phí
-scripts\giongque.bat contribution revoke 0 --as an                            :: 0 = ID bản ghi on-chain
-scripts\giongque.bat rewards withdraw --as creator
+scripts\datasetmarketplace.bat rewards balance --as an
+scripts\datasetmarketplace.bat rewards quote 1 --as an
+scripts\datasetmarketplace.bat rewards claim 1 --as an                                  :: qua relayer, phí ≈ 2.600 ₫
+scripts\datasetmarketplace.bat rewards claim 1 --as binh --direct                       :: tự rút, không phí
+scripts\datasetmarketplace.bat contribution revoke 0 --as an                            :: 0 = ID bản ghi on-chain
+scripts\datasetmarketplace.bat rewards withdraw --as creator
 
-:: Dataset & quản trị (admin key đọc từ backend\.env.local)
-scripts\giongque.bat dataset snapshot 1
-scripts\giongque.bat dataset download 1 --as labx --out dataset.zip         :: kiểm proof Merkle + root on-chain
-scripts\giongque.bat admin review
-scripts\giongque.bat admin relayer
+:: Dataset — người tạo chiến dịch là chủ dữ liệu (không có lệnh quản trị)
+scripts\datasetmarketplace.bat review list --as creator                                 :: bản ghi vùng xám chờ duyệt
+scripts\datasetmarketplace.bat review approve 12 --as creator                           :: 12 = ID bản ghi trong hàng chờ
+scripts\datasetmarketplace.bat review reject 13 --as creator --note "Đọc sai câu"       :: loại phải ghi lý do
+scripts\datasetmarketplace.bat dataset snapshot 1 --as creator                          :: ký PublishSnapshot, relayer gửi
+scripts\datasetmarketplace.bat dataset download 1 --as labx --out dataset.zip         :: kiểm proof Merkle + root on-chain
 ```
 
 **Về nộp file audio:** `contribution submit --audio` **chỉ dành cho kiểm thử local**. Server vẫn áp dụng đầy đủ
@@ -262,9 +268,9 @@ scripts\test-all.bat
 
 | Bộ test | Lệnh riêng | Nội dung |
 |---|---|---|
-| Foundry (37) | `cd contracts && forge test -vv` | 7 test gốc của đề xuất + giá, thời hạn, quỹ mồi, chống phát lại, quyền, fuzz khả năng thanh toán |
-| Unit + QC thật (54) | `cd backend && .venv\Scripts\python -m pytest tests/unit` | money, token, chuẩn hóa, CER, các bước QC, Merkle, EIP-712, cấu hình mạng; model wav2vec2 + VAD thật trên audio thật, webm/opus |
-| Tích hợp (11) | `.venv\Scripts\python -m pytest tests/integration` | **tự khởi chạy Anvil** ở cổng ngẫu nhiên, deploy contract thật, API thật, QC thật: toàn bộ luồng, thu hồi xóa file trên đĩa, vùng xám, rate limit, chốt chặn mainnet (forge script trên chain id 43114) |
+| Foundry (55) | `cd contracts && forge test -vv` | 7 test gốc của đề xuất + giá, thời hạn, quỹ mồi, chống phát lại, quyền (chỉ người tạo công bố phiên bản), hàm …WithSig, fuzz khả năng thanh toán |
+| Unit + QC thật (66) | `cd backend && .venv\Scripts\python -m pytest tests/unit` | money, token, chuẩn hóa, CER, các bước QC, Merkle, EIP-712 (cả `PublishSnapshot`), cấu hình mạng, Backblaze B2 (giả lập HTTP: tải lên có SHA-1 + SSE, xóa mọi phiên bản, xác thực lại); model wav2vec2 + VAD thật trên audio thật, webm/opus |
+| Tích hợp (14) | `.venv\Scripts\python -m pytest tests/integration` | **tự khởi chạy Anvil** ở cổng ngẫu nhiên, deploy contract thật, API thật, QC thật: toàn bộ luồng (người tạo ký công bố phiên bản, thu hồi khóa phiên bản cũ, người tạo công bố lại), thu hồi xóa file trên đĩa, người tạo duyệt/loại vùng xám, tự duyệt quá hạn, rate limit, chốt chặn mainnet (forge script trên chain id 43114) |
 | PostgreSQL/Neon (5) | `set TEST_DATABASE_URL=<chuỗi Neon>` rồi `.venv\Scripts\python -m pytest tests/integration/test_postgres.py` | Toàn bộ luồng nghiệp vụ trên PostgreSQL thật trong một **schema tạm** (tự xóa sau test, không đụng dữ liệu dev); chốt chặn deployment; script reset xóa database + audio; khởi động lại chỉ còn seed. Bỏ qua nếu không đặt biến |
 
 Lọc theo marker: `-m "not qc"` (bỏ test cần model), `-m integration`.
@@ -277,12 +283,13 @@ Với Anvil + deploy + backend đang chạy (mục 8–9):
 scripts\demo-local.bat
 ```
 
-1. **`demo e2e` — 51 kiểm tra** với audio tiếng Việt thật, QC thật, contract thật: faucet → người tạo soạn nháp +
+1. **`demo e2e` — 52 kiểm tra** với audio tiếng Việt thật, QC thật, contract thật: faucet → người tạo soạn nháp +
    `createCampaign` (quỹ mồi) → An, Bình đồng thuận qua relayer (**số dư AVAX không đổi**) → chặn: chưa đồng thuận,
    file chuẩn bị sẵn, token dùng lại → QC loại bản ghi im lặng / đọc sai câu → An 2 bản ghi, Bình 3 bản ghi được ghi
-   on-chain + tiền mồi → giá đúng công thức → Lab X mua, chia theo giây → snapshot v1, tải + kiểm Merkle → An rút qua
-   relayer (phí 0,1) rồi thu hồi → tiến độ, giá giảm, audio + salt bị xóa, phiên bản mới, link cũ trả 410 → Lab Y mua
-   rẻ hơn, An không được chia → Lab X tải lại chỉ còn bản ghi của Bình → Bình tự rút, người tạo rút.
+   on-chain + tiền mồi → giá đúng công thức → Lab X mua, chia theo giây → người tạo ký công bố snapshot v1, tải + kiểm
+   Merkle → An rút qua relayer (phí 0,1) rồi thu hồi → tiến độ, giá giảm, audio + salt bị xóa, phiên bản cũ bị khóa, link
+   cũ trả 410 → người tạo ký công bố v2 → Lab Y mua rẻ hơn, An không được chia → Lab X tải lại chỉ còn bản ghi của Bình →
+   Bình tự rút, người tạo rút.
 2. **`demo scenario-611` — 12 kiểm tra** tái hiện đúng bảng §6.11 trên Anvil: 16.900.000 ₫ → An 5.408.000 ₫,
    Bình 8.112.000 ₫ → An rút + thu hồi → 13.260.000 ₫ → Bình tổng 18.720.000 ₫. (Kịch bản này cố ý bỏ qua QC: ví QC
    oracle local ghi trực tiếp 7.200/10.800 giây để có đúng con số.)
@@ -293,7 +300,7 @@ scripts\demo-local.bat
 ## 13. Cấu hình Local / Fuji / Mainnet
 
 > **Danh sách đầy đủ mọi biến môi trường, biến nào bắt buộc ở mạng nào, và cách lấy từng giá trị** (tạo ví relayer, xin AVAX
-> Fuji, lấy địa chỉ contract sau deploy, sinh `JWT_SECRET`/`TOKEN_SECRET`/`ADMIN_API_KEY`, tạo Google OAuth Client ID…):
+> Fuji, lấy địa chỉ contract sau deploy, sinh `JWT_SECRET`/`TOKEN_SECRET`, tạo Google OAuth Client ID, tạo bucket Backblaze B2…):
 > [`docs/environment-variables.md`](docs/environment-variables.md).
 
 | | Local | Fuji | Mainnet |
@@ -306,7 +313,8 @@ scripts\demo-local.bat
 | `/demo/faucet` | có | có | **404** |
 | Đăng nhập dev | có (`DEV_AUTH_ENABLED=true`) | **cấm** (bật ⇒ không khởi động) | **cấm** |
 | SeedDemo | có | có | **script từ chối** |
-| `JWT_SECRET`, `TOKEN_SECRET`, `ADMIN_API_KEY` | mặc định dev | **bắt buộc** (≥ 32 ký tự) | **bắt buộc** |
+| `JWT_SECRET`, `TOKEN_SECRET` | mặc định dev | **bắt buộc** (≥ 32 ký tự) | **bắt buộc** |
+| Kho audio | đĩa (`storage\`) hoặc Backblaze B2 (`B2_*`) | khuyến nghị Backblaze B2 | Backblaze B2 |
 
 Backend còn từ chối khởi động nếu: RPC trả chain id khác hồ sơ, không có contract tại địa chỉ, `TOKEN_DECIMALS` sai,
 hoặc mainnet đang trỏ vào token `mUSDC`.
@@ -332,11 +340,11 @@ Swagger đầy đủ: `http://127.0.0.1:8000/docs`. Mọi số tiền trả về
 
 | Method | Endpoint | Mô tả |
 |---|---|---|
-| POST | `/auth/google` | Google ID token + chữ ký ví → JWT (mỗi email một ví) |
+| POST | `/auth/google` | Google ID token → JWT của ví đã gắn với email. Lần đầu kèm chữ ký ví để gắn (mỗi email một ví); thiếu ⇒ `409 wallet_required` |
 | GET | `/auth/challenge` | Thông điệp để ví ký (EIP-191) |
-| POST | `/auth/dev-login` | **Chỉ local**: đăng nhập không Google, vẫn ký chứng minh ví |
+| POST | `/auth/dev-login` | **Chỉ local**: đăng nhập không Google; quy tắc ví giống `/auth/google` |
 | GET | `/fx` | Tỷ giá USDC/VND và nguồn |
-| GET | `/campaigns` · `/campaigns/{id}` | Danh sách / chi tiết: tiến độ, giá VNĐ, số người, mẫu nghe thử |
+| GET | `/campaigns` · `/campaigns/{id}` | Danh sách / chi tiết: tiến độ, giá VNĐ, số người, mẫu nghe thử, thống kê duyệt vùng xám |
 | GET | `/campaigns/{id}/terms` | Điều khoản + đối chiếu `termsHash` |
 | GET | `/campaigns/{id}/price` · `/revenue` · `/licenses/{addr}` | Báo giá, doanh thu, license |
 | POST | `/campaigns/drafts` · `/campaigns/sync` | Soạn nháp (tham số `createCampaign`), đồng bộ sự kiện |
@@ -349,12 +357,18 @@ Swagger đầy đủ: `http://127.0.0.1:8000/docs`. Mọi số tiền trả về
 | GET/POST | `/datasets/{id}/download-message` · `/datasets/{id}/download` | Ký chứng minh ví → kiểm license → link có hạn |
 | GET | `/datasets/files/{token}` · `/datasets/{id}/snapshots/{v}` | Tải zip (audio + manifest + proof) · manifest công khai |
 | POST | `/demo/faucet` | **Chỉ local/Fuji**: mint mUSDC |
-| POST | `/admin/snapshot/{id}` | Đóng gói phiên bản, Merkle root, `publishSnapshot` |
-| GET/POST | `/admin/review` · `/admin/review/{id}` | Hàng chờ vùng xám · duyệt/loại |
-| GET/POST | `/admin/relayer` · `/admin/sync` | Số dư relayer, giao dịch gần đây · đồng bộ |
-| GET | `/health` | RPC, DB, relayer, model QC |
+| GET | `/creator/review` · `/creator/review/{id}/audio` | (chỉ người tạo) Hàng chờ vùng xám của chiến dịch mình · nghe bản ghi |
+| POST | `/creator/review/{id}` | (chỉ người tạo) Duyệt ⇒ `registerContribution` · loại (bắt buộc `note`) ⇒ xóa audio |
+| GET/POST | `/campaigns/{id}/snapshot-quote` · `/campaigns/{id}/snapshots` | (chỉ người tạo) Bản tóm tắt phiên bản + dữ liệu ký `PublishSnapshot` · relayer gọi `publishSnapshotWithSig` |
+| GET | `/health` | RPC, DB, relayer, model QC, kho audio (`storage`: `local` hoặc `b2:…`) |
+| GET | `/fees` | Bảng phí xử lý (VNĐ + USDC): tạo, mua, rút, rút hộ |
+| GET/POST | `/campaigns/drafts/{id}/create-quote` · `/campaigns/drafts/{id}/create` | Hóa đơn + dữ liệu ký `CreateCampaign`/`Permit` · relayer gọi `createCampaignWithSig` |
+| GET/POST | `/campaigns/{id}/buy-quote` · `/campaigns/{id}/buy` | Hóa đơn + dữ liệu ký `Buy`/`Permit` (không cần đăng nhập) · relayer gọi `buyWithSig` |
+| GET/POST | `/creator/withdraw-quote` · `/creator/withdraw` | Doanh thu người tạo + dữ liệu ký `Withdraw` · relayer gọi `withdrawWithSig` |
+| GET/POST | `/campaigns/{id}/seed-withdraw-quote` · `/campaigns/{id}/withdraw-seed` | Quỹ mồi còn dư + dữ liệu ký `WithdrawSeed` · relayer gọi `withdrawSeedWithSig` |
 
-Endpoint `/admin/*` cần header `X-Admin-Key`.
+Không có endpoint quản trị: duyệt vùng xám và công bố phiên bản cần phiên đăng nhập của đúng ví người tạo chiến dịch
+(implementation-plan §3 #28).
 
 ## 15. Frontend web
 
@@ -380,8 +394,8 @@ Nhấn `Ctrl+C` trong cửa sổ frontend, tiếp theo backend, cuối cùng Anv
 Để giữ trạng thái blockchain, khởi chạy Anvil bằng `scripts\start-anvil.bat persist` và dừng bình thường bằng `Ctrl+C`.
 Lần sau, nếu Anvil đã nạp lại trạng thái cũ và `contracts\deployments\31337.json` vẫn khớp contract trên chain thì
 chỉ cần khởi động lại backend + frontend. Với Anvil không lưu trạng thái, cần deploy lại sau mỗi lần khởi động chain mới.
-Audio vẫn nằm trong `storage\`; database nằm trong `storage\` (SQLite) hoặc trên Neon. `scripts\reset-local.bat` là lệnh
-**xóa** dữ liệu local (database + audio), không phải lệnh dừng dịch vụ.
+Audio nằm trong `storage\` (hoặc trên Backblaze B2 khi đặt `B2_*`); database nằm trong `storage\` (SQLite) hoặc trên Neon.
+`scripts\reset-local.bat` là lệnh **xóa** dữ liệu local (database + audio, cả file trên B2), không phải lệnh dừng dịch vụ.
 
 ### Biến môi trường (`frontend/.env.local`, mẫu ở `frontend/.env.example`)
 
@@ -392,7 +406,7 @@ Audio vẫn nằm trong `storage\`; database nằm trong `storage\` (SQLite) ho�
 | `NEXT_PUBLIC_RPC_URL` | RPC mặc định của mạng | RPC để đọc contract và chờ receipt |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | (trống) | Bật nút "Đăng nhập với Google" (Google Identity Services). Trống ⇒ chỉ có đăng nhập thử khi backend ở chế độ dev |
 
-Không có bí mật nào trong frontend: khóa relayer/QC chỉ ở backend; admin key do người vận hành nhập và chỉ giữ trong `sessionStorage`.
+Không có bí mật nào trong frontend: khóa relayer/QC và khóa Backblaze B2 chỉ ở backend.
 `NEXT_PUBLIC_GOOGLE_CLIENT_ID` phải trùng `GOOGLE_CLIENT_ID` của backend — cách tạo: [`docs/environment-variables.md`](docs/environment-variables.md) mục 2.F.
 Biến `NEXT_PUBLIC_*` được nhúng lúc build: đổi giá trị thì khởi động lại `npm run dev` / build lại.
 
@@ -401,17 +415,35 @@ Biến `NEXT_PUBLIC_*` được nhúng lúc build: đổi giá trị thì khởi
 
 ### Cấu hình ví
 
-- **Người đóng góp:** không cần cài ví. `/earn` tạo ví ngay trong trình duyệt (viem), khóa riêng được **mã hóa bằng mật
-  khẩu** (PBKDF2-SHA256 310.000 vòng + AES-GCM, WebCrypto) trong `localStorage`; khóa giải mã chỉ nằm trong bộ nhớ — tải
-  lại trang phải nhập mật khẩu để mở khóa. Ví ký EIP-712; relayer trả gas.
+**Hai cấp ví** (đề xuất §5 "Hai cấp ví"): ví trình duyệt là cấp cơ bản, chỉ dùng ở `/earn`; MetaMask/Core là cấp cao nhất,
+dùng mọi vai trò. Contract chỉ biết địa chỉ ví, nên nạp ví trình duyệt vào MetaMask (cùng địa chỉ) là nâng cấp mà không mất gì.
+
+- **Người đóng góp:** bước đầu `/earn` chọn **Tạo ví trên trình duyệt** hoặc **Dùng MetaMask / Core**.
+  - Ví trình duyệt: tạo bằng viem, khóa riêng được **mã hóa bằng mật khẩu** (PBKDF2-SHA256 310.000 vòng + AES-GCM, WebCrypto)
+    trong `localStorage`; khóa giải mã chỉ nằm trong bộ nhớ — tải lại trang phải nhập mật khẩu để mở khóa.
+  - Cả hai loại đều chỉ **ký** EIP-712 (đồng thuận, rút tiền, thu hồi); relayer gửi giao dịch và trả gas.
+  - **Sao lưu / nâng cấp:** thẻ "Sao lưu ví & nâng cấp lên MetaMask" ở trang Tổng quan → nhập mật khẩu → tải
+    `vi-datasetmarketplace-0x….json` (keystore V3: PBKDF2-HMAC-SHA256 262.144 vòng + AES-128-CTR + MAC keccak256, `lib/keystore.ts`).
+    MetaMask → Import account → **JSON File** → chọn file + mật khẩu ví → bấm **Kết nối MetaMask** trong hộp thoại (kiểm tra
+    đúng địa chỉ). Cùng địa chỉ ⇒ cùng Gmail, cùng phiên đăng nhập, cùng tiền và quyền thu hồi. Hộp thoại rút tiền nhắc sao lưu
+    nếu ví trình duyệt chưa có file.
+  - **Đăng nhập Gmail, ví đi theo Gmail:** header là nút **Đăng nhập**. Lần đầu chọn ví để gắn với Gmail và ký xác nhận
+    (lưu DB); các lần sau chỉ cần Gmail, web tự kết nối MetaMask vào đúng ví đó. MetaMask chọn nhầm tài khoản ⇒ cảnh báo +
+    nút chọn tài khoản. Gmail gắn ví trình duyệt mà vào trang tạo chiến dịch / mua ⇒ hướng dẫn nâng cấp (implementation-plan §3 #27).
   - **Mật khẩu ví phải mạnh:** ít nhất 8 ký tự, có chữ hoa, chữ thường, chữ số và ký tự đặc biệt (ví dụ `MatKhau@2026`).
     Form hiển thị liên tục từng điều kiện (đạt/chưa đạt), thanh độ mạnh, thông báo "còn N điều kiện", và "hai mật khẩu đã
     khớp/chưa khớp"; nút "Tạo ví" chỉ bật khi đạt đủ. Quy tắc nằm ở `frontend/lib/password.ts` và được kiểm tra lại trong
-    `lib/browserWallet.ts` khi tạo ví. Ô mật khẩu (tạo ví, mở khóa ví, admin key) có nút **con mắt** để hiện/ẩn.
+    `lib/browserWallet.ts` khi tạo ví. Ô mật khẩu (tạo ví, mở khóa ví, tải file sao lưu) có nút **con mắt** để hiện/ẩn.
   - Ví tạo trước khi có quy tắc này vẫn mở khóa được bằng mật khẩu cũ (quy tắc chỉ áp dụng khi tạo ví mới).
-- **Người mua / người tạo:** Core hoặc MetaMask. Với Anvil, thêm mạng thủ công trong ví: RPC `http://127.0.0.1:8545`,
-  chain id `31337`, ký hiệu `ETH`; nhập một khóa dev công khai của Anvil (ví dụ `#5` cho người mua, `#2` cho người tạo — in ra khi
-  chạy `anvil`). Nút "Nhận mUSDC thử nghiệm" (faucet) chỉ có ở local/Fuji.
+- **Người mua / người tạo:** Core hoặc MetaMask. Với Anvil, thêm mạng thủ công trong ví: RPC `http://127.0.0.1:8386` (Anvil của dự án; 8545 chừa cho Hardhat),
+  chain id `31337`, ký hiệu `ETH`; dùng ví của chính bạn và nạp mUSDC thử bằng `scripts\fund-wallet.bat 0xDIA_CHI_VI`
+  (chỉ local) hoặc nút "Nhận mUSDC thử nghiệm" (faucet, local/Fuji).
+  - **Không cần ETH/AVAX:** tạo chiến dịch, mua, rút doanh thu, rút quỹ mồi đều **chỉ ký** (permit EIP-2612 khi cần trừ tiền
+    + chữ ký thao tác); nền tảng gửi giao dịch và trả phí mạng (implementation-plan §3 #25).
+  - Hóa đơn bằng VNĐ: khoản tiền + **phí xử lý** (đã gồm phí mạng; mặc định tạo/mua ≈ 13.000 ₫, rút ≈ 2.600 ₫ —
+    `RELAY_FEE_*_USDC`, `GET /fees`) + tổng + số dư ví; menu ví ở đầu trang hiện số dư VNĐ.
+  - Wizard tạo chiến dịch nhập được **bộ câu mẫu từ file `.txt`** (UTF-8, mỗi dòng một câu, ≤ 500 KB). Ô số hiểu
+    `26.000.000` là hàng nghìn, `0.5` và `0,5` là thập phân.
 
 ### Các route chính
 
@@ -419,14 +451,13 @@ Biến `NEXT_PUBLIC_*` được nhúng lúc build: đổi giá trị thì khởi
 |---|---|---|
 | `/` | mọi người | Landing: hero, số liệu trực tiếp, cách hoạt động, quyền lợi hai phía, máy tính chia doanh thu, đồng thuận & thu hồi, chiến dịch nổi bật, FAQ |
 | `/explore` | người mua | Chợ dữ liệu: tìm kiếm, lọc trạng thái/vùng giọng, sắp xếp, thẻ nổi bật |
-| `/datasets/[id]` | người mua | Chi tiết: tiến độ, đường giá, chia doanh thu, nghe thử, license, phiên bản Merkle, **mua** (approve + buy) và **tải** |
+| `/datasets/[id]` | người mua | Chi tiết: tiến độ, đường giá, chia doanh thu, nghe thử, license, phiên bản Merkle, **mua** (chỉ ký: permit + Buy, nền tảng trả phí mạng) và **tải** |
 | `/library` | người mua | Bộ dữ liệu ví đã mua + tải phiên bản mới nhất |
-| `/earn` | người đóng góp | Onboarding (tạo/mở khóa ví → đăng nhập) rồi tổng quan thu nhập |
+| `/earn` | người đóng góp | Onboarding (tạo/mở khóa ví trình duyệt **hoặc** kết nối MetaMask/Core → đăng nhập) rồi tổng quan thu nhập + thẻ sao lưu/nâng cấp ví |
 | `/earn/campaigns`, `/earn/campaigns/[id]` | người đóng góp | Chọn chiến dịch, đọc & ký đồng thuận |
 | `/earn/campaigns/[id]/record` | người đóng góp | Phòng ghi âm: câu mẫu, sóng âm theo micro, đồng hồ, hạn câu, kết quả QC dễ hiểu |
 | `/earn/history`, `/earn/earnings` | người đóng góp | Bản ghi + **thu hồi**; thu nhập + **rút tiền** qua relayer |
-| `/create`, `/create/new` | người tạo | Bảng điều khiển (doanh thu, rút phần chia, quỹ mồi) và wizard 5 bước tạo chiến dịch |
-| `/admin` | vận hành | Hàng chờ vùng xám (nghe + duyệt/loại), công bố phiên bản dataset, relayer & giao dịch |
+| `/create`, `/create/new` | người tạo | "Chiến dịch của bạn": doanh thu, rút phần chia, quỹ mồi; mỗi chiến dịch có **hàng chờ duyệt** (nghe, duyệt / loại kèm lý do) và **phiên bản dataset** (xem bản tóm tắt → ký công bố). Wizard 5 bước tạo chiến dịch |
 
 ### Kiểm tra toàn bộ luồng nghiệp vụ trên trình duyệt
 
@@ -434,39 +465,41 @@ Biến `NEXT_PUBLIC_*` được nhúng lúc build: đổi giá trị thì khởi
 cd frontend
 npx playwright install chromium     :: lần đầu
 npm run test:e2e                    :: 7 bước, 4 vai trò, chạy thật trên Anvil + backend + QC
-npm run test:a11y                   :: axe WCAG 2.2 AA trên 8 trang + reduced motion + bàn phím
+npm run test:a11y                   :: axe WCAG 2.2 AA trên 7 trang + reduced motion + bàn phím
 :: Test bản production ở cổng khác: npm run build, npx next start --port 3001, rồi
 :: set E2E_BASE_URL=http://localhost:3001 và thêm cổng đó vào CORS_ORIGINS của backend
 scripts\test-frontend.bat           :: typecheck + lint + build (thêm "e2e" để chạy Playwright)
 ```
 
-Kịch bản e2e: người tạo kết nối ví → đăng nhập → wizard tạo chiến dịch có quỹ mồi (approve + createCampaign) → người
+Kịch bản e2e: người tạo đăng nhập Gmail (lần đầu gắn ví) → wizard tạo chiến dịch có quỹ mồi (ký permit + CreateCampaign, số dư ETH không đổi) → người
 đóng góp tạo ví, đăng nhập, ký đồng thuận, **ghi âm qua micro** (Chromium phát một bản ghi tiếng Việt thật làm micro giả)
-→ QC thật đạt, ghi on-chain + tiền mồi → người mua nhận mUSDC, approve + buy → người đóng góp rút tiền qua relayer →
-admin công bố phiên bản → người mua tải zip từ thư viện → người đóng góp thu hồi. Ví người mua/người tạo trong test là
+→ QC thật đạt, ghi on-chain + tiền mồi → người mua nhận mUSDC, ký permit + Buy → người tạo rút doanh thu bằng chữ ký → người đóng góp rút tiền qua relayer →
+người tạo xem bản tóm tắt và ký công bố phiên bản (số dư ETH không đổi) → người mua tải zip từ thư viện → người đóng góp thu hồi. Ví người mua/người tạo trong test là
 một EIP-1193 chuyển tiếp tới tài khoản dev của Anvil (`e2e/anvil-wallet.ts`, chỉ dùng trong test) — chữ ký và giao dịch thật.
 
-Thử bằng tay: mở `http://localhost:3000/earn`, tạo ví, "Đăng nhập thử", chọn chiến dịch mẫu #0, ký đồng thuận và đọc câu bằng micro của bạn.
+Thử bằng tay: mở `http://localhost:3000/earn`, tạo ví, bấm **Tiếp tục bằng Google**, chọn chiến dịch mẫu #0, ký đồng thuận và đọc câu bằng micro của bạn.
+Khung "Đăng nhập thử" (không cần Google) bị ẩn với người dùng, chỉ dành cho test tự động; muốn dùng tay ở local thì mở Console của
+trình duyệt, chạy `localStorage.setItem("datasetmarketplace.devLogin", "1")` rồi tải lại trang (backend phải chạy `NETWORK=local`).
 
 ## 16. Lỗi thường gặp
 
 | Hiện tượng | Cách xử lý |
 |---|---|
 | `forge` / `anvil` không nhận | Chạy qua `scripts\*.bat` (tự thêm `%USERPROFILE%\.foundry\bin` vào PATH) hoặc chạy lại `scripts\setup.bat` |
-| Chữ tiếng Việt bị lỗi trong CMD | Dùng `scripts\giongque.bat` (đặt `chcp 65001` + UTF-8). Trong Git Bash: `python -X utf8 ...` |
+| Chữ tiếng Việt bị lỗi trong CMD | Dùng `scripts\datasetmarketplace.bat` (đặt `chcp 65001` + UTF-8). Trong Git Bash: `python -X utf8 ...` |
 | Backend: `Thiếu VOICE_CAMPAIGNS / TOKEN_ADDRESS` | Chưa deploy: chạy `scripts\deploy-local.bat` |
 | Backend: `Không kết nối được RPC` | Anvil chưa chạy: `scripts\start-anvil.bat` |
 | Sau khi khởi động lại Anvil, API báo lỗi lạ | Khởi động lại Anvil xóa chain ⇒ chạy lại `deploy-local.bat` **và** khởi động lại backend |
-| CLI `401 Tài khoản không tồn tại` | Phiên cũ của deployment trước: `giongque login --as <tên>` |
+| CLI `401 Tài khoản không tồn tại` | Phiên cũ của deployment trước: `datasetmarketplace login --as <tên>` |
 | Demo CLI báo `409 wallet_taken` | Ví test đã gắn email từ luồng khác, ví dụ Playwright. Chạy từng bộ trên deployment local sạch riêng; giữ nguyên liên kết email–ví của dữ liệu đang dùng. |
 | `ValueError ... torch to at least v2.6` | Đang dùng torch < 2.6: cài lại theo `setup.bat` (torch 2.6.0 CPU) |
 | `409 duplicate_audio` khi chạy lại `demo e2e` | Chống trùng hoạt động đúng; redeploy theo mục 12 |
 | `400 not_live` khi nộp file | File dài hơn thời gian từ lúc hiện câu: dùng `contribution submit` (CLI tự chờ) hoặc `contribution record` |
 | `429 rate_limited` | Vượt giới hạn; local faucet 200/giờ (`RATE_LIMIT_FAUCET`), có thể đặt `RATE_LIMIT_ENABLED=false` khi test |
 | Tải model QC chậm / cảnh báo symlink trên Windows | Bình thường; model lưu ở `%USERPROFILE%\.cache\huggingface` |
-| Cổng 8000/8545 bận | Đóng cửa sổ cũ, hoặc `netstat -ano \| findstr :8000` rồi `taskkill /PID <pid> /F` |
+| Cổng 8000/8386 bận | Đóng cửa sổ cũ, hoặc `netstat -ano \| findstr :8000` rồi `taskkill /PID <pid> /F`. Cổng 8545 thường là Hardhat/Scaffold-ETH của dự án khác — dự án này không dùng |
 | Web báo "Không kết nối được máy chủ" | Backend chưa chạy, hoặc origin web không có trong `CORS_ORIGINS` (mặc định `http://localhost:3000,http://127.0.0.1:3000`) |
-| Nút ví hiện "Chuyển sang Foundry/Anvil" | Ví đang ở mạng khác: bấm để chuyển, hoặc thêm mạng RPC `http://127.0.0.1:8545`, chain id 31337 |
+| Nút ví hiện "Chuyển sang Foundry/Anvil" | Ví đang ở mạng khác: bấm để chuyển, hoặc thêm mạng RPC `http://127.0.0.1:8386`, chain id 31337 |
 | `/earn` hỏi lại mật khẩu sau khi tải lại trang | Đúng thiết kế: khóa ví chỉ được giải mã trong bộ nhớ |
 | Nút "Tạo ví của tôi" không bấm được | Mật khẩu chưa đủ 5 điều kiện (xem danh sách dưới ô mật khẩu) hoặc hai lần nhập chưa khớp |
 | Quên mật khẩu ví | Không khôi phục được (khóa chỉ mã hóa trên máy bạn). Rút hết tiền trước khi xóa dữ liệu trình duyệt |

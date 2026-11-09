@@ -12,7 +12,7 @@ from pathlib import Path
 
 from eth_account import Account
 
-STATE_DIR = Path(os.environ.get("GIONGQUE_CLI_HOME", Path(__file__).resolve().parents[1] / ".giongque-cli"))
+STATE_DIR = Path(os.environ.get("DATASETMARKETPLACE_CLI_HOME", Path(__file__).resolve().parents[1] / ".datasetmarketplace-cli"))
 STATE_FILE = STATE_DIR / "state.json"
 
 ANVIL_MNEMONIC = "test test test test test test test test test test test junk"  # mnemonic công khai của Anvil

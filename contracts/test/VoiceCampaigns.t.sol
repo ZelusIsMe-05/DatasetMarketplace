@@ -61,7 +61,7 @@ contract VoiceCampaignsTest is Test {
         bytes32 domainSeparator = keccak256(
             abi.encode(
                 keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-                keccak256("GiongQue"),
+                keccak256("DatasetMarketplace"),
                 keccak256("1"),
                 block.chainid,
                 address(vc)
@@ -563,12 +563,17 @@ contract VoiceCampaignsTest is Test {
         vc.registerContribution(0, an, keccak256("same"), 100);
     }
 
-    function test_OnlyQcCanRegisterAndPublish() public {
+    function test_OnlyQcCanRegister_OnlyCreatorCanPublish() public {
         vm.prank(an);
         vc.giveConsent(0);
         vm.expectRevert(VoiceCampaigns.NotQcOracle.selector);
         vc.registerContribution(0, an, keccak256("x"), 10);
-        vm.expectRevert(VoiceCampaigns.NotQcOracle.selector);
+        // Phiên bản dataset thuộc quyền chủ chiến dịch: ví nền tảng (QC oracle) không công bố được
+        vm.prank(qc);
+        vm.expectRevert(VoiceCampaigns.NotCreator.selector);
+        vc.publishSnapshot(0, keccak256("root"), "uri");
+        vm.prank(an);
+        vm.expectRevert(VoiceCampaigns.NotCreator.selector);
         vc.publishSnapshot(0, keccak256("root"), "uri");
     }
 
@@ -582,15 +587,15 @@ contract VoiceCampaignsTest is Test {
 
     function test_PublishSnapshotEmitsEvent() public {
         vm.expectEmit(true, false, false, true);
-        emit VoiceCampaigns.SnapshotPublished(0, keccak256("root"), "giongque://snapshot/0/1");
-        vm.prank(qc);
-        vc.publishSnapshot(0, keccak256("root"), "giongque://snapshot/0/1");
-        vm.prank(qc);
+        emit VoiceCampaigns.SnapshotPublished(0, keccak256("root"), "datasetmarketplace://snapshot/0/1");
+        vm.prank(creator);
+        vc.publishSnapshot(0, keccak256("root"), "datasetmarketplace://snapshot/0/1");
+        vm.prank(creator);
         vm.expectRevert(VoiceCampaigns.InvalidParams.selector);
         vc.publishSnapshot(5, keccak256("root"), "x");
     }
 
-    function test_AdminFunctionsOnlyOwner() public {
+    function test_PlatformConfigOnlyOwner() public {
         vm.startPrank(an);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, an));
         vc.setQcOracle(an);

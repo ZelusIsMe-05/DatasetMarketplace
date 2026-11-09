@@ -1,7 +1,8 @@
 """Thu hồi đồng thuận (§6.8): người dùng ký Revoke, relayer gửi revokeWithSig.
 
-Việc xóa audio + salt và phát hành phiên bản dataset mới do DatasetService.purge_revoked đảm nhận,
+Việc xóa audio + salt và khóa (stale) các phiên bản dataset chứa bản ghi do DatasetService.purge_revoked đảm nhận,
 được gọi qua hook của indexer khi thấy sự kiện ConsentRevoked (bao phủ cả trường hợp người dùng tự gọi `revoke`).
+Phiên bản mới do chủ chiến dịch ký công bố (implementation-plan §3 #28), backend không tự công bố.
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from app.schemas.common import TypedDataResponse
 from app.schemas.contribution import RevokeResponse
 from app.services.consent_service import MAX_DEADLINE_SEC, SIGNATURE_WINDOW_SEC
 from app.services.fx_service import FxService
-from app.services.storage import PrivateStorage
+from app.services.storage import AudioStorage
 
 
 class RevokeService:
@@ -28,7 +29,7 @@ class RevokeService:
         chain: ChainClient,
         relayer: Relayer,
         indexer: EventIndexer,
-        storage: PrivateStorage,
+        storage: AudioStorage,
         fx: FxService,
     ):
         self.sf, self.chain, self.relayer, self.indexer, self.storage, self.fx = sf, chain, relayer, indexer, storage, fx
@@ -73,7 +74,7 @@ class RevokeService:
             if c is not None:
                 c.revoke_tx_hash = res.tx_hash
                 s.commit()
-        self.indexer.sync()  # -> ConsentRevoked -> DatasetService.purge_revoked (xóa audio + salt, snapshot mới)
+        self.indexer.sync()  # -> ConsentRevoked -> DatasetService.purge_revoked (xóa audio + salt, khóa phiên bản cũ)
         view = self.chain.campaign(rec.campaign_id)
         with self.sf() as s:
             c = ContributionRepo.by_onchain_id(s, contribution_id)
