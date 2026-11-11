@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { useAccount, useConfig, useConnect, useSignMessage, useSignTypedData, useSwitchChain } from "wagmi";
-import { getAccount } from "wagmi/actions";
+import { useAccount, useConfig, useConnect, useSignMessage, useSignTypedData, useSwitchChain, type Config } from "wagmi";
+import { disconnect, getAccount } from "wagmi/actions";
 import type { TypedDataResponse } from "@/types/api";
 import { signTyped, typedDataArgs } from "@/lib/browserWallet";
 import { network } from "@/lib/config";
@@ -39,16 +39,41 @@ function injectedProvider(): Eip1193 | null {
   return ((window as unknown as { ethereum?: Eip1193 }).ethereum ?? null) as Eip1193 | null;
 }
 
+/** Ví có thật sự đang cho trang này dùng địa chỉ đó không (eth_accounts) — trạng thái wagmi có thể đã cũ. */
+async function walletPermits(address: string): Promise<boolean> {
+  const eth = injectedProvider();
+  if (!eth) return false;
+  try {
+    const accounts = (await eth.request({ method: "eth_accounts" })) as string[];
+    return accounts.some((a) => a.toLowerCase() === address.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+/** Gỡ MỌI kết nối wagmi (không chỉ kết nối hiện tại) — dùng khi đăng xuất và khi dọn trạng thái cũ. */
+export async function disconnectAll(config: Config): Promise<void> {
+  for (const { connector } of [...config.state.connections.values()]) {
+    await disconnect(config, { connector }).catch(() => undefined);
+  }
+}
+
 /** Thao tác đưa MetaMask/Core về đúng ví đã gắn với Gmail: kết nối, mở bảng chọn tài khoản, chuyển mạng. */
 export function useWalletActions() {
   const config = useConfig();
   const { connectAsync, connectors } = useConnect();
   const { switchChainAsync } = useSwitchChain();
 
-  /** Kết nối MetaMask (nếu chưa) và trả địa chỉ đang chọn. */
+  /**
+   * Kết nối MetaMask (nếu chưa) và trả địa chỉ đang chọn. wagmi báo "đã kết nối" nhưng ví đã thu quyền của trang
+   * (đăng xuất ở tab khác, ngắt kết nối trong MetaMask...) ⇒ bỏ trạng thái cũ rồi xin quyền lại, không bắt F5.
+   */
   const connect = useCallback(async (): Promise<`0x${string}`> => {
     const current = getAccount(config);
-    if (current.isConnected && current.address) return current.address;
+    if (current.isConnected && current.address) {
+      if (await walletPermits(current.address)) return current.address;
+      await disconnectAll(config);
+    }
     const injected = connectors[0];
     if (!injected || !injectedProvider()) throw new Error("Chưa có ví MetaMask/Core trên trình duyệt này. Hãy cài ví rồi tải lại trang.");
     const r = await connectAsync({ connector: injected });
@@ -81,7 +106,9 @@ export function useWalletActions() {
     [config, connect, switchChain],
   );
 
-  return { connect, pickAccount, switchChain, ensure };
+  const disconnectWallet = useCallback(() => disconnectAll(config), [config]);
+
+  return { connect, pickAccount, switchChain, ensure, disconnectAll: disconnectWallet };
 }
 
 /** Ký thông điệp đăng nhập + dữ liệu EIP-712 (Consent / Claim / Revoke) bằng ví người đóng góp đang dùng. */

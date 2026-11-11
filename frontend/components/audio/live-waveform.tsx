@@ -29,9 +29,14 @@ export function LiveWaveform({ analyser, className }: { analyser: AnalyserNode |
       const dpr = window.devicePixelRatio || 1;
       const w = cv.clientWidth;
       const h = cv.clientHeight;
-      if (cv.width !== w * dpr) {
-        cv.width = w * dpr;
-        cv.height = h * dpr;
+      // Canvas chưa/không được dàn trang (đang ẩn, đang chuyển cảnh) => rộng 0: bỏ qua khung này, nếu không
+      // bề rộng thanh âm và bán kính bo góc thành số âm và roundRect ném RangeError.
+      if (w <= 0 || h <= 0) return;
+      const pw = Math.round(w * dpr);
+      const ph = Math.round(h * dpr);
+      if (cv.width !== pw || cv.height !== ph) {
+        cv.width = pw;
+        cv.height = ph;
       }
       analyser.getByteTimeDomainData(data);
       let sum = 0;
@@ -56,11 +61,11 @@ export function LiveWaveform({ analyser, className }: { analyser: AnalyserNode |
         return;
       }
       const gap = 3;
-      const bw = (w - gap * (bars - 1)) / bars;
+      const bw = Math.max(1, (w - gap * (bars - 1)) / bars);
       history.forEach((v, i) => {
         const bh = Math.max(4, v * h);
         g.beginPath();
-        g.roundRect(i * (bw + gap), (h - bh) / 2, bw, bh, bw / 2);
+        g.roundRect(i * (bw + gap), (h - bh) / 2, bw, bh, Math.min(bw, bh) / 2);
         g.fill();
       });
     };

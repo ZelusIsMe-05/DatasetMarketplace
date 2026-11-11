@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, useSyncExternalStore, type FormEvent } from "react";
-import { useAccount, useConnect } from "wagmi";
 import { BACKUP_EVENT, backedUpAt, exportKeystore, markBackedUp } from "@/lib/browserWallet";
 import { describeChainError } from "@/lib/chainErrors";
 import { formatDateTime, shortHex } from "@/lib/format";
 import { keystoreFileName } from "@/lib/keystore";
-import { useContributor } from "@/hooks/useSessions";
+import { useContributor, useWalletActions } from "@/hooks/useSessions";
 import { useToast } from "@/providers/toast-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -62,8 +61,7 @@ export function WalletBackupCard() {
 function WalletFileDialog({ mode, onClose }: { mode: "backup" | "upgrade" | null; onClose: () => void }) {
   const c = useContributor();
   const toast = useToast();
-  const wallet = useAccount();
-  const { connectAsync, connectors } = useConnect();
+  const actions = useWalletActions();
   const backed = useBackedUpAt(c.address);
   const [pw, setPw] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -107,12 +105,7 @@ function WalletFileDialog({ mode, onClose }: { mode: "backup" | "upgrade" | null
     setBusy("connect");
     setConnectError(null);
     try {
-      let addr = wallet.isConnected ? wallet.address : undefined;
-      if (!addr) {
-        const injected = connectors[0];
-        if (!injected || typeof window === "undefined" || !("ethereum" in window)) throw new Error("Chưa thấy MetaMask/Core trên trình duyệt này. Hãy cài ví rồi tải lại trang.");
-        addr = (await connectAsync({ connector: injected })).accounts[0];
-      }
+      const addr = await actions.connect();
       if (!addr || addr.toLowerCase() !== c.address.toLowerCase()) {
         throw new Error(`MetaMask đang chọn ví ${addr ? shortHex(addr) : "khác"}, không phải ví ${shortHex(c.address)}. Hãy chọn đúng tài khoản vừa nạp trong MetaMask rồi bấm lại.`);
       }

@@ -2,12 +2,11 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { useDisconnect } from "wagmi";
 import { cn } from "@/lib/cn";
 import { moneyFromUnits } from "@/lib/money";
 import { useFx } from "@/hooks/queries";
 import { useTokenBalance } from "@/hooks/useChain";
-import { useAccountWallet } from "@/hooks/useSessions";
+import { useAccountWallet, useWalletActions } from "@/hooks/useSessions";
 import { useAuth } from "@/providers/auth-provider";
 import { useToast } from "@/providers/toast-provider";
 import { AccountSettings } from "@/features/auth/account-settings";
@@ -22,7 +21,7 @@ export function AccountMenu({ fullWidth }: { fullWidth?: boolean }) {
   const auth = useAuth();
   const aw = useAccountWallet();
   const profile = useProfile();
-  const { disconnect } = useDisconnect();
+  const wallet = useWalletActions();
   const balance = useTokenBalance(aw.address ?? undefined);
   const fx = useFx();
   const toast = useToast();
@@ -98,7 +97,7 @@ export function AccountMenu({ fullWidth }: { fullWidth?: boolean }) {
               className={cn(item, "text-danger-ink hover:bg-danger-soft")}
               onClick={() => {
                 auth.signOut();
-                disconnect();
+                void wallet.disconnectAll();
                 setOpen(false);
                 toast.success("Đã đăng xuất");
               }}

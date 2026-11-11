@@ -1,10 +1,16 @@
 // Ghi âm TRỰC TIẾP trên trình duyệt (đề xuất §6.4: không cho upload file) → WAV PCM16 16 kHz mono,
 // đúng định dạng lưu trữ chuẩn của backend (commitment tính trên WAV chuẩn hóa phía server).
 export const TARGET_RATE = 16_000;
+/** Ghi thêm sau khi bấm Dừng: người đọc hay bấm khi chữ cuối chưa dứt, cộng độ trễ micro/khử ồn và các khung
+ *  worklet đang trên đường về main thread — tắt micro ngay sẽ cắt mất chữ cuối và QC loại vì "không khớp câu mẫu". */
+export const POST_ROLL_MS = 400;
+/** QC phía server loại bản ghi dài hơn 15 giây (QC_MAX_SEC): cắt ở 14,9 giây để luôn nằm trong giới hạn. */
+export const MAX_RECORD_SEC = 14.9;
 
 export interface LiveSession {
   analyser: AnalyserNode;
   sampleRate: number;
+  /** Ghi thêm POST_ROLL_MS rồi mới tắt micro; bản ghi trả về không dài quá MAX_RECORD_SEC. */
   stop: () => Promise<{ wav: Blob; durationSec: number }>;
   /** Hủy, không trả bản ghi (rời trang, lỗi) — luôn tắt micro. */
   abort: () => void;
@@ -81,9 +87,11 @@ export async function startLiveCapture(): Promise<LiveSession> {
       chunks.length = 0;
     },
     stop: async () => {
+      if (!closed) await new Promise((r) => setTimeout(r, POST_ROLL_MS));
       const rate = ctx.sampleRate;
       close();
-      const samples = resample(concat(chunks), rate, TARGET_RATE);
+      const full = resample(concat(chunks), rate, TARGET_RATE);
+      const samples = full.subarray(0, Math.floor(MAX_RECORD_SEC * TARGET_RATE));
       return { wav: encodeWav(samples, TARGET_RATE), durationSec: samples.length / TARGET_RATE };
     },
   };

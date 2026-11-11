@@ -6,7 +6,7 @@ import Link from "next/link";
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import type { ContributionResult, PromptResponse } from "@/types/api";
 import { cn } from "@/lib/cn";
-import { MicrophoneError, startLiveCapture, type LiveSession } from "@/lib/recorder";
+import { MAX_RECORD_SEC, MicrophoneError, POST_ROLL_MS, startLiveCapture, type LiveSession } from "@/lib/recorder";
 import { qk, useCampaign } from "@/hooks/queries";
 import { useContributor } from "@/hooks/useSessions";
 import { ApiError } from "@/services/api";
@@ -19,6 +19,8 @@ import { friendlyQcReason } from "@/features/earn/use-earn";
 
 const MAX_SEC = 15;
 const MIN_SEC = 1.5;
+// Tự dừng sớm hơn 15 giây một đoạn bằng phần ghi thêm sau khi dừng, để cả bản ghi vẫn dưới giới hạn của QC.
+const AUTO_STOP_SEC = MAX_RECORD_SEC - POST_ROLL_MS / 1000;
 
 type Phase =
   | { k: "ready" }
@@ -66,7 +68,7 @@ export function RecordStudio({ params }: { params: Promise<{ id: string }> }) {
     const t = window.setInterval(() => {
       const n = Date.now();
       setNow(n);
-      if (phase.k === "recording" && ((n - phase.startedAt) / 1000 >= MAX_SEC || phase.prompt.expires_at - n / 1000 < 3)) autoStop.current();
+      if (phase.k === "recording" && ((n - phase.startedAt) / 1000 >= AUTO_STOP_SEC || phase.prompt.expires_at - n / 1000 < 3)) autoStop.current();
     }, 100);
     return () => window.clearInterval(t);
   }, [phase]);
@@ -193,7 +195,7 @@ export function RecordStudio({ params }: { params: Promise<{ id: string }> }) {
                 <Button variant="danger" size="lg" onClick={() => void stop()} disabled={elapsed < MIN_SEC} className="min-w-52" icon={<span className="size-3 rounded-sm bg-white" aria-hidden />}>
                   {elapsed < MIN_SEC ? "Đang ghi…" : "Dừng & gửi"}
                 </Button>
-                <p className="text-sm text-ink-muted">Đọc xong câu thì bấm <b>Dừng</b> ngay — khoảng lặng dài làm bản ghi dễ bị loại.</p>
+                <p className="text-sm text-ink-muted">Đọc dứt chữ cuối rồi bấm <b>Dừng</b> — đừng để khoảng lặng dài, máy tự ghi thêm một chút sau khi bấm.</p>
               </>
             )}
             {phase.k === "checking" && <Checking text={phase.prompt.text} />}
