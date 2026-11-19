@@ -12,7 +12,7 @@ from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from slowapi.errors import RateLimitExceeded
 from starlette.requests import Request
 
@@ -97,6 +97,11 @@ def create_app(
         allow_methods=["GET", "POST", "PATCH"],
         allow_headers=["Authorization", "Content-Type"],
     )
+
+    @app.get("/", include_in_schema=False)
+    def root() -> RedirectResponse:
+        # Backend chỉ là API: ai mở địa chỉ gốc (vd. từ link trong README) được đưa tới Swagger thay vì "Not Found"
+        return RedirectResponse("/docs")
 
     app.include_router(public_router)
     app.include_router(campaigns_router)

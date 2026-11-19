@@ -121,6 +121,9 @@ def test_swagger_has_all_spec_endpoints(app_client):
     assert not missing
     assert ok(app_client.get("/health"))["status"] == "ok"
     assert ok(app_client.get("/fx"))["rate"] == 26000
+    root = app_client.get("/", follow_redirects=False)  # địa chỉ gốc của API đưa tới Swagger, không "Not Found"
+    assert root.status_code in (302, 307) and root.headers["location"] == "/docs"
+    assert "/" not in paths
 
 
 def test_one_email_one_wallet(app_client):
