@@ -6,7 +6,8 @@ Danh sách này lấy trực tiếp từ code: `backend/app/core/config.py`, `co
 | File | Ai đọc | Tạo từ |
 |---|---|---|
 | `backend/.env.local` · `.env.fuji` · `.env.mainnet` | Backend FastAPI (chọn theo `NETWORK`) | `backend/.env.local.example`, `.env.fuji.example`, `.env.mainnet.example` |
-| `contracts/.env` *(tùy chọn)* | `forge script` (Deploy, SeedDemo) | `contracts/.env.example` — ở local, `scripts\deploy-local.bat` tự đặt biến, không cần file này |
+| `contracts/.env` *(tùy chọn)* | `forge script` (Deploy, SeedDemo) — Foundry tự đọc ở **mọi** lần chạy, kể cả local | `contracts/.env.example` — ở local, `scripts\deploy-local.bat` tự đặt biến, không cần file này. **Không** đặt khóa Fuji ở đây |
+| `contracts/.env.fuji` | Chỉ `scripts\deploy-fuji.bat` (Deploy + SeedDemo + verify trên Fuji) | `contracts/.env.fuji.example` (implementation-plan §3 #34) |
 | `frontend/.env.local` (hoặc biến trên Vercel) | Next.js (chỉ biến `NEXT_PUBLIC_*`) | `frontend/.env.example` |
 | Biến hệ thống *(tùy chọn)* | CLI `datasetmarketplace` | — |
 
@@ -87,10 +88,10 @@ Ghi chú: mỗi deployment có tiền tố riêng `<network>-<fingerprint>/audio
 
 | # | Việc | Ra được biến |
 |---|---|---|
-| A | Tạo 2 ví mới: ví deploy và ví relayer/QC oracle | `PRIVATE_KEY`, `RELAYER_PRIVATE_KEY`, `QC_ORACLE` |
-| B | Xin AVAX test cho 2 ví đó | (gas) |
-| C | Deploy contract lên Fuji | `VOICE_CAMPAIGNS`, `TOKEN_ADDRESS`, `DEPLOY_BLOCK` |
-| D | Tạo ví người mua demo + chạy SeedDemo | `DEMO_BUYER` |
+| A | Tạo **một** ví mới cho Fuji: deploy = owner = relayer = QC oracle = ví nhận phí (§3 #34) | `PRIVATE_KEY` (`contracts/.env.fuji`) = `RELAYER_PRIVATE_KEY` (`backend/.env.fuji`) |
+| B | Xin AVAX test cho ví đó | (gas) |
+| C | Deploy + seed + verify: `scripts\deploy-fuji.bat --broadcast` | `contracts/deployments/43113.json` (backend tự đọc `VOICE_CAMPAIGNS`, `TOKEN_ADDRESS`, `DEPLOY_BLOCK`) |
+| D | (Tùy chọn) Ví người mua demo nhận sẵn mUSDC | `DEMO_BUYER` trong `contracts/.env.fuji` |
 | E | Sinh các khóa bí mật | `JWT_SECRET`, `TOKEN_SECRET` |
 | F | Tạo Google OAuth Client ID | `GOOGLE_CLIENT_ID`, `NEXT_PUBLIC_GOOGLE_CLIENT_ID` |
 | G | Có địa chỉ public của backend và frontend | `API_PUBLIC_URL`, `CORS_ORIGINS`, `NEXT_PUBLIC_API_URL` |
@@ -98,57 +99,45 @@ Ghi chú: mỗi deployment có tiền tố riêng `<network>-<fingerprint>/audio
 
 > Chỉ gửi giao dịch lên Fuji khi cả đội đã đồng ý; mọi lệnh dưới đây chạy trong CMD tại thư mục gốc dự án.
 
-### A. Tạo ví (deploy, relayer)
+### A. Tạo ví (một ví cho Fuji)
 
-```cmd
-%USERPROFILE%\.foundry\bin\cast wallet new
-%USERPROFILE%\.foundry\bin\cast wallet new
-```
+Tạo ví mới bằng `cast wallet new` (hoặc tài khoản mới trong MetaMask rồi xuất private key). Ghi khóa vào **hai** file đã
+gitignore, không gửi qua chat:
 
-Mỗi lệnh in ra `Address` và `Private key`. Dùng ví thứ nhất làm **ví deploy** (`PRIVATE_KEY`), ví thứ hai làm
-**relayer + QC oracle** (`RELAYER_PRIVATE_KEY` ở backend, địa chỉ của nó là `QC_ORACLE` khi deploy). Lưu khóa vào trình quản
-lý mật khẩu; ví relayer chỉ nên chứa ít AVAX (đề xuất §15). Có thể tạo ví bằng Core/MetaMask rồi xuất private key cũng được.
+- `contracts\.env.fuji` → `PRIVATE_KEY=` (chép từ `contracts\.env.fuji.example`);
+- `backend\.env.fuji` → `RELAYER_PRIVATE_KEY=` (cùng khóa).
+
+Trên Fuji, một ví vừa là owner, vừa là relayer, QC oracle và ví nhận phí (bỏ trống `QC_ORACLE`/`FEE_COLLECTOR`) — đơn giản
+cho hackathon, chỉ cần một lần xin faucet. Lên mainnet **phải tách** ví owner khỏi ví relayer đặt trên server (§3 #34).
 
 ### B. Xin AVAX test
 
-Vào **Core faucet** (core.app → Tools → Testnet Faucet), chọn mạng **Avalanche Fuji C-Chain**, nhập địa chỉ ví deploy và ví
-relayer (dùng coupon của ban tổ chức nếu faucet yêu cầu). Kiểm tra số dư:
+Mở faucet chính thức https://build.avax.network/console/primary-network/faucet (đăng nhập Builder Hub), chọn
+**Fuji C-Chain**, dán địa chỉ ví (dùng coupon của ban tổ chức nếu faucet yêu cầu). Cần rất ít: deploy + seed ≈ 6 triệu gas;
+script yêu cầu tối thiểu 0,01 AVAX để relayer còn gửi được giao dịch demo. Kiểm tra số dư:
 
 ```cmd
 %USERPROFILE%\.foundry\bin\cast balance <ĐỊA_CHỈ> --ether --rpc-url https://api.avax-test.network/ext/bc/C/rpc
 ```
 
-### C. Deploy contract lên Fuji
+### C. Deploy + seed + verify lên Fuji
 
 ```cmd
-cd contracts
-set PRIVATE_KEY=<private key ví deploy>
-set QC_ORACLE=<địa chỉ ví relayer>
-set CLAIM_FEE=100000
-forge script script/Deploy.s.sol --rpc-url fuji --broadcast
+scripts\deploy-fuji.bat               :: chạy thử: kiểm chain 43113, số dư, mô phỏng Deploy.s.sol (không gửi giao dịch)
+scripts\deploy-fuji.bat --broadcast   :: deploy THẬT + SeedDemo (chiến dịch mẫu #0) + verify trên Snowtrace
+scripts\deploy-fuji.bat --verify-only :: verify lại nếu bước verify lỗi mạng
 ```
 
-Script in ra và ghi file `contracts\deployments\43113.json`:
-
-| Trường trong file | Biến backend |
-|---|---|
-| `voiceCampaigns` | `VOICE_CAMPAIGNS` |
-| `token` | `TOKEN_ADDRESS` (MockUSDC trên Fuji) |
-| `deployBlock` | `DEPLOY_BLOCK` |
-
-Nếu file `43113.json` có trong repo, backend tự đọc 3 giá trị này — vẫn nên ghi rõ vào `backend\.env.fuji`.
+Script (`backend/scripts/deploy_fuji.py`) từ chối mọi chain khác 43113, không in khóa, và từ chối deploy lại khi đã có
+`contracts\deployments\43113.json` (thêm `--force-new` nếu cố ý — khi đó đổi `DATABASE_SCHEMA`). File `43113.json`
+(`voiceCampaigns`, `token`, `deployBlock`) được commit; backend `NETWORK=fuji` tự đọc nên không cần chép địa chỉ vào
+`backend\.env.fuji`. Verify qua API kiểu Etherscan của Routescan (Snowtrace testnet), không cần API key thật.
 
 ### D. Ví người mua demo + dữ liệu demo
 
-Tạo thêm một ví (`cast wallet new` hoặc MetaMask) cho giám khảo thử mua, rồi:
-
-```cmd
-set VOICE_CAMPAIGNS=<voiceCampaigns ở bước C>
-set DEMO_BUYER=<địa chỉ ví người mua demo>
-forge script script/SeedDemo.s.sol --rpc-url fuji --broadcast
-```
-
-SeedDemo mint 2.000 mUSDC và chuyển `DEMO_BUYER_GAS_WEI` (mặc định 0,05 AVAX) từ ví deploy sang ví người mua.
+Đặt `DEMO_BUYER=<địa chỉ ví>` trong `contracts\.env.fuji` (bỏ trống = ví deploy) trước khi chạy bước C. SeedDemo mint
+2.000 mUSDC cho ví đó; `DEMO_BUYER_GAS_WEI=0` vì người mua chỉ ký, nền tảng trả phí mạng. Người dùng khác lấy mUSDC bằng
+nút "Nhận mUSDC thử nghiệm" trên web.
 
 ### E. Sinh khóa bí mật (mỗi biến một giá trị khác nhau, ≥ 32 ký tự)
 
@@ -191,6 +180,25 @@ Backend chấp nhận **mọi** email Google đã xác minh (`email_verified`), 
 - `CORS_ORIGINS`: URL frontend (nhiều giá trị ngăn cách bằng dấu phẩy), ví dụ `https://datasetmarketplace.vercel.app`.
 - `NEXT_PUBLIC_API_URL` (frontend) = `API_PUBLIC_URL`.
 
+### G2. Host backend trên máy ảo Azure (đang dùng)
+
+Backend cần ~2 GB RAM cho model QC (torch + wav2vec2) ⇒ các gói miễn phí 512 MB (Render, Koyeb) không chạy được; Hugging
+Face Spaces Docker trên CPU miễn phí giờ đòi gói PRO (lỗi 402). Dự án dùng **Azure for Students** (100 USD, không cần thẻ):
+
+1. Kích hoạt https://azure.microsoft.com/free/students (xác minh email trường), cài Azure CLI
+   (https://aka.ms/installazurecliwindowsx64), mở cửa sổ mới, `az login`, chọn subscription *Azure for Students*.
+2. `scripts\deploy-azure.bat` — chỉ kiểm tra (đăng nhập, cỡ máy dùng được, quét thư mục build).
+3. `scripts\deploy-azure.bat --create` — tạo `datasetmarketplace-rg/dm-api` (Ubuntu 22.04, `Standard_B2als_v2` 2 vCPU/4 GB,
+   vùng `eastasia`), cloud-init cài Docker + swap 2 GB, mở cổng 80/443, gửi mã + `backend.env` qua SSH (khóa riêng
+   `~/.ssh/datasetmarketplace_azure`), `docker compose up -d --build` (API + Caddy HTTPS Let's Encrypt), chờ `/health`.
+4. Sửa mã / biến ⇒ `scripts\deploy-azure.bat --deploy` (build lại trên máy ảo).
+
+Subscription Azure for Students chỉ cho 5 vùng (`koreacentral`, `japanwest`, `malaysiawest`, `eastasia`, `uaenorth` — policy
+*Allowed resource deployment regions*); `malaysiawest` không có cỡ máy nào khả dụng. Biến lấy từ `backend\.env.fuji`, script tự
+đặt `API_PUBLIC_URL=https://<tên miền máy ảo>` và thêm origin Vercel vào `CORS_ORIGINS`. Bí mật chỉ nằm trong
+`~/dm/backend.env` (chmod 600) trên máy ảo. **Không chạy song song** backend Fuji ở máy khác (chung ví relayer + database).
+Hết tín dụng thì Azure dừng máy ảo (không trừ tiền vì không gắn thẻ).
+
 ### Kết quả: `backend\.env.fuji`
 
 ```dotenv
@@ -222,6 +230,18 @@ NEXT_PUBLIC_GOOGLE_CLIENT_ID=...apps.googleusercontent.com
 ```
 
 Biến `NEXT_PUBLIC_*` được nhúng vào bundle lúc build ⇒ đổi giá trị thì phải build/deploy lại frontend.
+
+**Đang dùng (19/11):** project Vercel `dataset-marketplace` (team `zelus4`) → https://dataset-marketplace-team1-2026.vercel.app.
+Deploy từ thư mục `frontend`: `npx vercel deploy --prod --yes` (đổi biến: `npx vercel env add <TÊN> production --force`).
+`frontend/vercel.json` khai báo framework Next.js (project tạo bằng CLI không tự nhận ⇒ mọi route 404); `frontend/.vercelignore`
+không đẩy `.env.local` và thư mục e2e. Sau khi có domain mới: thêm vào **Authorized JavaScript origins** của OAuth client
+(bước F.4) và vào `CORS_ORIGINS` của backend. `NEXT_PUBLIC_API_URL` của bản Vercel =
+`https://datasetmarketplace-df1d46.eastasia.cloudapp.azure.com` (máy ảo Azure, mục G2). Không trỏ bản Vercel vào
+`http://127.0.0.1:8000`: Chrome chặn trang công khai gọi địa chỉ máy cục bộ (Local Network Access) nếu người dùng chưa cho phép.
+
+Chạy frontend trên máy nhưng trỏ vào Fuji (chưa cần Vercel): `scripts\start-frontend.bat fuji` đặt
+`NEXT_PUBLIC_NETWORK=fuji` + RPC Fuji cho riêng cửa sổ đó (ghi đè `frontend\.env.local`, các biến khác giữ nguyên), đi
+cùng `scripts\start-backend.bat fuji`.
 
 ---
 
@@ -268,7 +288,7 @@ Không chạy SeedDemo, không có faucet, không có đăng nhập thử ở ma
 | `FAUCET_MAX_USDC` · `MAX_UPLOAD_BYTES` | không | 2000 · 5 MB | Giới hạn faucet, kích thước audio |
 | `RELAY_FEE_CREATE_USDC` · `RELAY_FEE_BUY_USDC` · `RELAY_FEE_WITHDRAW_USDC` | không | `0.5` · `0.5` · `0.1` (≈ 13.000 ₫ · 13.000 ₫ · 2.600 ₫ ở tỷ giá 26.000) | **Phí xử lý** (đã gồm phí mạng nền tảng trả hộ) khi tạo chiến dịch, mua, người tạo rút doanh thu / quỹ mồi — đơn vị USDC, nhận `0,5` hoặc `0.5`, tối đa 6 chữ số lẻ, `0` = miễn phí. Người dùng ký đúng số phí trên hóa đơn; đổi giá trị không cần deploy lại hợp đồng (implementation-plan §3 #25). Phí rút hộ của người đóng góp vẫn là `CLAIM_FEE` on-chain |
 | `REVIEW_AUTO_APPROVE_HOURS` | không | `72` | Bản ghi vùng xám mà chủ chiến dịch chưa duyệt sau số giờ này ⇒ nền tảng tự duyệt; `0` = chờ mãi; phải ≥ 0 (implementation-plan §3 #28) |
-| `INDEXER_INTERVAL_SEC` · `LOG_CHUNK_BLOCKS` | không | 5 · 2000 | Chu kỳ vòng nền (đồng bộ sự kiện, tự duyệt quá hạn, thử lại giao dịch lỗi) / độ rộng quét sự kiện |
+| `INDEXER_INTERVAL_SEC` · `LOG_CHUNK_BLOCKS` | không | 5 · 2000 | Chu kỳ vòng nền (đồng bộ sự kiện, tự duyệt quá hạn, thử lại giao dịch lỗi) / số block mỗi lần `eth_getLogs`. RPC công khai Fuji tối đa **100** (`.env.fuji.example` đặt sẵn); RPC báo "block range too large … maximum of N" thì indexer tự giảm xuống N |
 | `QC_MODEL_ID` · `QC_NUM_THREADS` · `QC_PRELOAD` · `QC_WEIGHT_SOURCE` | không | wav2vec2 tiếng Việt · 2 · `false` · `speech` | Model và cách tính số giây |
 | `QC_MIN_SEC` … `QC_MIN_WORD_SCORE` | không | theo đề xuất §10.3 | Ngưỡng QC (hiệu chỉnh theo §10.4) |
 
@@ -282,7 +302,8 @@ Không chạy SeedDemo, không có faucet, không có đăng nhập thử ở ma
 | `CLAIM_FEE` | Deploy | không (`0`) | Phí rút hộ, đơn vị token (`100000` = 0,1 USDC) |
 | `USDC_ADDRESS` | Deploy | **mainnet** | USDC thật |
 | `VOICE_CAMPAIGNS`, `DEMO_BUYER` | SeedDemo | có | Contract vừa deploy, ví người mua demo |
-| `DEMO_BUYER_GAS_WEI`, `SEED_TARGET_SEC`, `SEED_DAYS`, `SEED_METADATA_URI`, `SEED_DIR` | SeedDemo | không | 0,05 AVAX · 36000 · 30 · `seed:demo-campaign` · `../seed/demo-campaign` |
+| `DEMO_BUYER_GAS_WEI`, `SEED_TARGET_SEC`, `SEED_DAYS`, `SEED_METADATA_URI`, `SEED_DIR` | SeedDemo | không | 0,05 AVAX (`deploy-fuji.bat`: `0`) · 36000 · 30 · `seed:demo-campaign` · `../seed/demo-campaign` |
+| `FUJI_RPC_URL` | `scripts\deploy-fuji.bat` (biến hệ thống) | không | RPC Fuji riêng; mặc định `https://api.avax-test.network/ext/bc/C/rpc`. Script luôn kiểm chain id = 43113 |
 
 ### Frontend (`NEXT_PUBLIC_*`)
 

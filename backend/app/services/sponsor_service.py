@@ -248,7 +248,7 @@ class SponsorService:
             meta={"draft_id": draft_id, "creator": creator},
         )
         ev = self.chain.contract.events.CampaignCreated().process_receipt(res.receipt, errors=DISCARD)[0]["args"]
-        self.indexer.sync()
+        self.indexer.sync(res.receipt)
         self.campaigns.relink_unverified()
         return self._result("create", res.tx_hash, a["seedAmount"], body.fee, campaign_id=int(ev["campaignId"]))
 
@@ -293,7 +293,7 @@ class SponsorService:
             meta={"campaign_id": campaign_id, "buyer": addr},
         )
         ev = self.chain.contract.events.Purchased().process_receipt(res.receipt, errors=DISCARD)[0]["args"]
-        self.indexer.sync()
+        self.indexer.sync(res.receipt)
         return self._result("buy", res.tx_hash, int(ev["price"]), body.fee, campaign_id=campaign_id)
 
     # ------------------------------------------------------------------ rút doanh thu (người tạo)
@@ -326,7 +326,7 @@ class SponsorService:
             meta={"account": addr},
         )
         ev = self.chain.contract.events.Withdrawn().process_receipt(res.receipt, errors=DISCARD)[0]["args"]
-        self.indexer.sync()
+        self.indexer.sync(res.receipt)
         return self._result("withdraw", res.tx_hash, int(ev["amount"]), body.fee)
 
     # ------------------------------------------------------------------ rút quỹ mồi còn dư (người tạo, sau hạn)
@@ -367,5 +367,5 @@ class SponsorService:
             meta={"campaign_id": campaign_id, "creator": view.creator},
         )
         ev = self.chain.contract.events.SeedWithdrawn().process_receipt(res.receipt, errors=DISCARD)[0]["args"]
-        self.indexer.sync()
+        self.indexer.sync(res.receipt)
         return self._result("withdraw_seed", res.tx_hash, int(ev["amount"]), body.fee, campaign_id=campaign_id)

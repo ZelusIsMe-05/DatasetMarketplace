@@ -1,15 +1,37 @@
 # DatasetMarketplace — Chợ dữ liệu giọng nói tiếng Việt có đồng thuận, chia doanh thu trên Avalanche
 
 > Dự án cho **Team1 Vietnam UniHack 2026**. Đặc tả gốc: [`DatasetMarketplace_Hackathon.md`](DatasetMarketplace_Hackathon.md).
-> Giai đoạn hiện tại: **Smart contract + Backend + CLI + Frontend web hoàn chỉnh, chạy được trên máy (Anvil)** và đã kiểm
-> thử end-to-end trên trình duyệt; chưa deploy Fuji.
-> Tiến độ chi tiết: [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md).
-> Hướng dẫn chỉ dành cho cài đặt và chạy dự án: [`RUN_PROJECT.md`](RUN_PROJECT.md).
+> Smart contract + Backend + CLI + Frontend web hoàn chỉnh, kiểm thử end-to-end trên Anvil và **chạy công khai trên
+> Avalanche Fuji** (contract deploy + verify 19/11/2026, web + backend lên mạng 20/11/2026).
+> Tiến độ chi tiết: [`IMPLEMENTATION_STATUS.md`](IMPLEMENTATION_STATUS.md) · Cài đặt và chạy trên máy: [`RUN_PROJECT.md`](RUN_PROJECT.md).
 >
 > **Tên sản phẩm:** *DatasetMarketplace*. Tên hiển thị giao diện nằm ở một chỗ:
 > `frontend/lib/brand.ts`. Các định danh kỹ thuật được **giữ nguyên** để không phá vỡ hệ thống: domain EIP-712 `DatasetMarketplace`
 > (khắc trong contract, đổi sẽ làm mọi chữ ký mất hiệu lực), lệnh CLI `datasetmarketplace`, tên gói/thư mục `datasetmarketplace-*`,
 > khóa `localStorage` `datasetmarketplace.*` (đổi sẽ làm mất ví đã tạo trong trình duyệt).
+
+## Liên kết
+
+| | |
+|---|---|
+| **Web** (Vercel, Avalanche Fuji) | **https://dataset-marketplace-team1-2026.vercel.app** |
+| **Backend API** (máy ảo Azure, `NETWORK=fuji`) | https://datasetmarketplace-df1d46.eastasia.cloudapp.azure.com · [Swagger `/docs`](https://datasetmarketplace-df1d46.eastasia.cloudapp.azure.com/docs) · [`/health`](https://datasetmarketplace-df1d46.eastasia.cloudapp.azure.com/health) |
+| **Contract chính** `VoiceCampaigns` (đã verify) | [`0xFFC08fAF4dEa52fF797FF2c937b0f000De61BaAc`](https://testnet.snowtrace.io/address/0xFFC08fAF4dEa52fF797FF2c937b0f000De61BaAc#code) |
+| **Tiền trong app** `MockUSDC` (mUSDC, đã verify) | [`0x3Ee19255BBB89560128c894579cb0A7934283C30`](https://testnet.snowtrace.io/address/0x3Ee19255BBB89560128c894579cb0A7934283C30#code) |
+| **Ví nền tảng** (owner, relayer trả phí mạng, QC oracle) | [`0xc79c1c96D22ce1a1E02A8F4dC09DD5333E3FAD45`](https://testnet.snowtrace.io/address/0xc79c1c96D22ce1a1E02A8F4dC09DD5333E3FAD45) |
+| **Trang giới thiệu** · **Chính sách quyền riêng tư** | https://zelusisme-05.github.io/DatasetMarketplace/ · [privacy.html](https://zelusisme-05.github.io/DatasetMarketplace/privacy.html) |
+| **Mã nguồn** | https://github.com/ZelusIsMe-05/DatasetMarketplace |
+
+Fuji C-Chain (chain id 43113), deploy block `61335914` — địa chỉ đầy đủ trong
+[`contracts/deployments/43113.json`](contracts/deployments/43113.json).
+
+**Dùng thử trên Fuji (không cần AVAX):**
+
+1. Mở web → **Đăng nhập** → *Tiếp tục với Google* (Gmail nào cũng được) → lần đầu gắn một ví với Gmail.
+2. **Kiếm tiền** (người đóng góp): tạo ví ngay trên trình duyệt (đặt mật khẩu) → chọn chiến dịch → ký đồng thuận → cho phép
+   micro → đọc câu mẫu → máy chấm chất lượng → bản ghi đạt được ghi nhận trên chain → xem thu nhập, rút tiền, thu hồi.
+3. **Tạo chiến dịch / Mua dữ liệu**: dùng MetaMask hoặc Core ở mạng *Avalanche Fuji* (web tự đề nghị thêm mạng); bấm
+   **Nhận mUSDC thử nghiệm** để có tiền thử. Mọi thao tác chỉ **ký** — nền tảng trả phí mạng, người dùng không cần AVAX.
 
 ---
 
@@ -319,20 +341,18 @@ scripts\demo-local.bat
 Backend còn từ chối khởi động nếu: RPC trả chain id khác hồ sơ, không có contract tại địa chỉ, `TOKEN_DECIMALS` sai,
 hoặc mainnet đang trỏ vào token `mUSDC`.
 
-**Deploy Fuji (chưa thực hiện — cần AVAX test từ Core faucet và sự cho phép của đội):**
+**Deploy Fuji (đã deploy 19/11/2026 — địa chỉ ở đầu README; chạy lại chỉ khi cố ý tạo bộ contract mới):**
 
 ```cmd
-cd contracts
-set PRIVATE_KEY=<ví deploy của đội>
-set QC_ORACLE=<ví relayer>
-set CLAIM_FEE=100000
-forge script script/Deploy.s.sol --rpc-url fuji --broadcast
-set VOICE_CAMPAIGNS=<địa chỉ in ra>
-set DEMO_BUYER=<ví người mua demo>
-forge script script/SeedDemo.s.sol --rpc-url fuji --broadcast
-:: verify trên Snowtrace theo hướng dẫn hiện hành; copy backend\.env.fuji.example -> .env.fuji, điền giá trị
-scripts\start-backend.bat fuji
+:: khóa ví: contracts\.env.fuji (mẫu .env.fuji.example) + RELAYER_PRIVATE_KEY trong backend\.env.fuji — xem docs\environment-variables.md mục 2
+scripts\deploy-fuji.bat               :: chạy thử (không gửi giao dịch): chain 43113, số dư, mô phỏng
+scripts\deploy-fuji.bat --broadcast   :: deploy + chiến dịch mẫu + verify Snowtrace; ghi contracts\deployments\43113.json
+scripts\deploy-azure.bat --deploy     :: cập nhật backend Fuji trên máy ảo Azure (az login trước; docs\environment-variables.md mục G2)
+scripts\start-frontend.bat fuji       :: web trên máy http://localhost:3000, trỏ vào Fuji + backend Azure
 ```
+
+Backend Fuji chỉ chạy **một nơi** (máy ảo Azure): `scripts\start-backend.bat fuji` trên máy khác sẽ dùng chung ví relayer và
+database ⇒ trùng nonce giao dịch. Frontend production: `cd frontend && npx vercel deploy --prod --yes`.
 
 ## 14. Danh sách API
 
@@ -513,7 +533,7 @@ trình duyệt, chạy `localStorage.setItem("datasetmarketplace.devLogin", "1")
 
 ## 17. Giới hạn hiện tại và công việc còn lại
 
-- **Chưa deploy Fuji / verify Snowtrace** — cần AVAX từ Core faucet và sự cho phép; đã có script và `.env.fuji.example`.
+- **Fuji:** contract đã deploy + verify; web trên Vercel, backend trên máy ảo Azure (địa chỉ ở đầu README; cập nhật backend: `scripts\deploy-azure.bat --deploy`, xem `docs/environment-variables.md` mục G2).
 - **`POST /auth/google` chưa thử với ID token Google thật** (cần người đăng nhập bằng tài khoản Google); luồng dev login
   dùng chung logic gắn ví.
 - **Ngưỡng QC** đang theo đề xuất; chưa hiệu chỉnh bằng 50 bản đúng / 50 bản sai của người thật (§10.4). Fixture

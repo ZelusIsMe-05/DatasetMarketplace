@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from web3 import Web3
 from web3.contract import Contract
 from web3.exceptions import ContractCustomError, ContractLogicError
+from web3.middleware import ExtraDataToPOAMiddleware
 
 from app.blockchain.abi import load_abi
 from app.blockchain.eip712 import Domain
@@ -67,6 +68,9 @@ def _hex(b: bytes) -> str:
 class ChainClient:
     def __init__(self, rpc_url: str, voice_campaigns: str, token: str, timeout: int = 30):
         self.w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={"timeout": timeout}))
+        # Block của Avalanche C-Chain có extraData dài hơn 32 byte: thiếu middleware này web3 ném ExtraDataLengthError
+        # khi đọc block (vd. lúc relayer lấy baseFee để gửi giao dịch) — gặp thật trên Fuji 19/11. Vô hại với Anvil.
+        self.w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
         self.address = Web3.to_checksum_address(voice_campaigns)
         self.contract: Contract = self.w3.eth.contract(address=self.address, abi=load_abi("VoiceCampaigns"))
         self.token_address = Web3.to_checksum_address(token)
@@ -100,26 +104,27 @@ class ChainClient:
     def native_balance(self, address: str) -> int:
         return int(self.w3.eth.get_balance(Web3.to_checksum_address(address)))
 
-    def _call(self, fn):  # noqa: ANN001
+    def _call(self, fn, block: int | str = "latest"):  # noqa: ANN001
         try:
-            return fn.call()
+            return fn.call(block_identifier=block)
         except (ContractCustomError, ContractLogicError) as e:
             name = decode_revert(getattr(e, "data", None))
             raise ChainError(message_for(name, "Đọc contract thất bại"), code=name or "chain_error") from e
 
     # ------------------------------------------------------------------ VoiceCampaigns
 
-    def campaign_count(self) -> int:
-        return int(self._call(self.contract.functions.campaignCount()))
+    def campaign_count(self, block: int | str = "latest") -> int:
+        return int(self._call(self.contract.functions.campaignCount(), block))
 
     def contribution_count(self) -> int:
         return int(self._call(self.contract.functions.contributionCount()))
 
-    def campaign(self, campaign_id: int) -> CampaignView | None:
-        if campaign_id < 0 or campaign_id >= self.campaign_count():
+    def campaign(self, campaign_id: int, block: int | str = "latest") -> CampaignView | None:
+        """`block`: đọc trạng thái tại một block cụ thể (indexer dùng block của sự kiện — không phụ thuộc node RPC trễ)."""
+        if campaign_id < 0 or campaign_id >= self.campaign_count(block):
             return None
         f = self.contract.functions
-        c = self._call(f.getCampaign(campaign_id))
+        c = self._call(f.getCampaign(campaign_id), block)
         return CampaignView(
             id=campaign_id,
             creator=c[0],
@@ -135,9 +140,9 @@ class ChainClient:
             acc_per_weight=int(c[10]),
             seed_rate_per_sec=int(c[11]),
             seed_balance=int(c[12]),
-            progress_bps=int(self._call(f.progressBps(campaign_id))),
-            current_price=int(self._call(f.currentPrice(campaign_id))),
-            is_collecting=bool(self._call(f.isCollecting(campaign_id))),
+            progress_bps=int(self._call(f.progressBps(campaign_id), block)),
+            current_price=int(self._call(f.currentPrice(campaign_id), block)),
+            is_collecting=bool(self._call(f.isCollecting(campaign_id), block)),
         )
 
     def contribution(self, contribution_id: int) -> ContributionView | None:

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import soundfile as sf
+from web3.logs import DISCARD
 
 from app.blockchain.eip712 import sign_text, sign_typed
 from app.services import merkle
@@ -64,7 +65,8 @@ def create_campaign(client, chain, target_sec: int = 30, seed_vnd: int = 0) -> i
         a["targetSec"], a["fullPrice"], a["contributorBps"], a["creatorBps"], a["deadline"],
         bytes.fromhex(a["promptSetHash"][2:]), bytes.fromhex(a["termsHash"][2:]), a["metadataURI"],
         a["seedRatePerSec"], a["seedAmount"]))
-    cid = vc.events.CampaignCreated().process_receipt(r)[0]["args"]["campaignId"]
+    # receipt còn log Transfer của token (quỹ mồi) — bỏ qua thay vì để web3 cảnh báo MismatchedABI
+    cid = vc.events.CampaignCreated().process_receipt(r, errors=DISCARD)[0]["args"]["campaignId"]
     ok(client.post("/campaigns/sync"))
     return int(cid)
 

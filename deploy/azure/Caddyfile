@@ -1,0 +1,5 @@
+# HTTPS tự động cho tên miền của máy ảo (DOMAIN đặt trong ~/dm/.env trên máy ảo, vd. xxx.southeastasia.cloudapp.azure.com)
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy api:7860
+}

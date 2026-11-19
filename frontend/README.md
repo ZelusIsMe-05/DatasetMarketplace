@@ -14,6 +14,12 @@ npm run test:a11y    :: axe WCAG 2.2 AA + reduced motion + bàn phím
 :: E2E_BASE_URL=http://localhost:3001 để chạy test với bản production (next start)
 ```
 
+**Bản production (Fuji):** https://dataset-marketplace-team1-2026.vercel.app — project Vercel `dataset-marketplace`, deploy từ thư
+mục này bằng `npx vercel deploy --prod --yes`. `vercel.json` khai báo framework Next.js (thiếu thì mọi route 404),
+`.vercelignore` không đẩy `.env.local`/e2e. Biến `NEXT_PUBLIC_*` đặt trên Vercel (`npx vercel env add <TÊN> production --force`,
+xem [docs/environment-variables.md](../docs/environment-variables.md)); `NEXT_PUBLIC_API_URL` = backend Azure
+https://datasetmarketplace-df1d46.eastasia.cloudapp.azure.com. Chạy trên máy nhưng trỏ vào Fuji: `scripts\start-frontend.bat fuji`.
+
 | Thư mục | Nội dung |
 |---|---|
 | `app/` | Route: `/`, `/explore`, `/datasets/[id]`, `/library`, `/earn/*`, `/create`, `/create/new` (không có trang quản trị) |

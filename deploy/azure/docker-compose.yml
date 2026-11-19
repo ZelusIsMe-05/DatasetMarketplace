@@ -1,0 +1,32 @@
+# Backend Dataset Marketplace trên máy ảo Azure (scripts\deploy-azure.bat dựng thư mục này trên máy ảo):
+# - api: image dựng từ deploy/Dockerfile (FastAPI + QC), biến môi trường + bí mật trong backend.env (chỉ nằm trên máy ảo)
+# - caddy: HTTPS tự động (Let's Encrypt) cho tên miền *.cloudapp.azure.com của máy ảo, chuyển tiếp vào api
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: backend.env
+    expose:
+      - "7860"
+    logging:
+      options: { max-size: "20m", max-file: "3" }
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,10 @@
+# Không đưa lên Vercel: cấu hình local (Vercel dùng biến môi trường của project — docs/environment-variables.md),
+# kiểm thử trình duyệt và kết quả build cũ.
+.env*
+!.env.example
+node_modules
+.next
+e2e
+playwright.config.ts
+playwright-report
+*.tsbuildinfo

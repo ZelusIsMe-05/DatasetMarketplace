@@ -200,7 +200,7 @@ class ContributionService:
             c.seed_paid_units = str(int(ev["seedPaid"]))
             c.error = None
             s.commit()
-        self.indexer.sync()
+        self.indexer.sync(res.receipt)
         return self._result(contribution_id, qc, "Bản ghi đạt và đã được ghi nhận")
 
     def _result(self, contribution_id: int, qc: QCResult | None, message: str) -> ContributionResult:

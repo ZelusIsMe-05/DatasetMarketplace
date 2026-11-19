@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 // Kiểm tra tự động WCAG 2.2 AA (axe-core) trên các trang chính + hành vi prefers-reduced-motion + bàn phím.
-const PAGES = ["/", "/explore", "/datasets/0", "/earn", "/create", "/library", "/create/new"];
+const PAGES = ["/", "/explore", "/buy", "/datasets/0", "/earn", "/earn/campaigns", "/create", "/library", "/create/new", "/huong-dan"];
 // Nút Google Identity Services do Google tự vẽ bên trong khung [data-google-button] (lúc là iframe, lúc là div; nhãn
 // "…Mở trong thẻ mới" không sửa được từ phía mình). Khung bọc của mình vẫn có nhãn "Đăng nhập với Google".
 export const GOOGLE_BUTTON = "[data-google-button]";

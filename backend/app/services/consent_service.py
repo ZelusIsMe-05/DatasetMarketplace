@@ -73,7 +73,7 @@ class ConsentService:
             kind="consent",
             meta={"campaign_id": campaign_id, "contributor": addr},
         )
-        self.indexer.sync()
+        self.indexer.sync(res.receipt)
         with self.sf() as s:
             row = s.scalar(select(Consent).where(Consent.campaign_id == campaign_id, Consent.address == addr))
             if row is not None:

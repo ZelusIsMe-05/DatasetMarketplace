@@ -1,0 +1,10 @@
+{
+  "chainId": 43113,
+  "claimFee": 100000,
+  "deployBlock": 61335914,
+  "feeCollector": "0xc79c1c96D22ce1a1E02A8F4dC09DD5333E3FAD45",
+  "owner": "0xc79c1c96D22ce1a1E02A8F4dC09DD5333E3FAD45",
+  "qcOracle": "0xc79c1c96D22ce1a1E02A8F4dC09DD5333E3FAD45",
+  "token": "0x3Ee19255BBB89560128c894579cb0A7934283C30",
+  "voiceCampaigns": "0xFFC08fAF4dEa52fF797FF2c937b0f000De61BaAc"
+}

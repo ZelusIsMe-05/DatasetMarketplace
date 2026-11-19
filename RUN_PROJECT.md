@@ -13,6 +13,9 @@ Chạy các khối lệnh dưới đây trong **Windows CMD**, từ thư mục g
 
 Trong các ví dụ, dự án nằm ở `D:\Hackathon`; thay đường dẫn này nếu bạn đặt ở nơi khác.
 
+> Không cần cài đặt để dùng thử: bản chạy công khai trên Avalanche Fuji ở **https://dataset-marketplace-team1-2026.vercel.app**
+> (backend https://datasetmarketplace-df1d46.eastasia.cloudapp.azure.com). Liên kết contract và cách dùng thử: [README → Liên kết](README.md#liên-kết).
+
 ## 2. Cài đặt lần đầu
 
 ```cmd

@@ -74,7 +74,7 @@ class RevokeService:
             if c is not None:
                 c.revoke_tx_hash = res.tx_hash
                 s.commit()
-        self.indexer.sync()  # -> ConsentRevoked -> DatasetService.purge_revoked (xóa audio + salt, khóa phiên bản cũ)
+        self.indexer.sync(res.receipt)  # -> ConsentRevoked -> DatasetService.purge_revoked (xóa audio + salt, khóa phiên bản cũ)
         view = self.chain.campaign(rec.campaign_id)
         with self.sf() as s:
             c = ContributionRepo.by_onchain_id(s, contribution_id)

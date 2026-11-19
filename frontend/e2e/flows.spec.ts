@@ -41,8 +41,8 @@ async function role(browser: Browser, account?: string) {
 
 /**
  * Đăng nhập bằng Gmail (dev login) qua nút "Đăng nhập" trong `where`. Ví đi theo Gmail: email đã gắn ví (vd. CLI demo
- * `datasetmarketplace login --as <tên>` chạy trước, cùng email <tên>@datasetmarketplace.local) thì vào thẳng và web tự kết nối đúng ví;
- * lần đầu thì kết nối ví giả của test rồi ký gắn ví với email.
+ * `datasetmarketplace login --as <tên>` chạy trước, cùng email <tên>@datasetmarketplace.local) thì vào thẳng — web KHÔNG tự
+ * mở MetaMask (xem `connectWallet`); lần đầu thì kết nối ví giả của test rồi ký gắn ví với email.
  */
 async function login(page: Page, email: string, where: Locator = page.getByRole("main")) {
   await where.getByRole("button", { name: "Đăng nhập", exact: true }).click();
@@ -58,6 +58,17 @@ async function login(page: Page, email: string, where: Locator = page.getByRole(
   await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 30_000 });
 }
 
+/**
+ * Đăng nhập tài khoản đã gắn ví không tự mở MetaMask: trang cần ký (tạo chiến dịch, mua, thư viện) hiện cổng
+ * "Kết nối MetaMask" để người dùng tự bấm. Bấm như người dùng thật nếu cổng hiện (ví đã kết nối thì bỏ qua), rồi chờ `ready`.
+ */
+async function connectWallet(page: Page, ready: Locator) {
+  const gate = page.getByRole("main").getByRole("button", { name: "Kết nối MetaMask", exact: true });
+  await expect(gate.or(ready).first()).toBeVisible();
+  if (await gate.isVisible()) await gate.click();
+  await expect(ready.first()).toBeVisible();
+}
+
 test("người tạo: kết nối ví, đăng nhập, tạo chiến dịch có quỹ mồi qua wizard", async ({ browser, request }) => {
   await request.post("http://127.0.0.1:8000/demo/faucet", { data: { address: ANVIL.creator, amount_usdc: 100 } });
   const { page, ctx, errors } = await role(browser, ANVIL.creator);
@@ -67,7 +78,7 @@ test("người tạo: kết nối ví, đăng nhập, tạo chiến dịch có q
   // Cùng email với CLI (`datasetmarketplace login --as creator`): một ví chỉ gắn một email, nên CLI demo và e2e
   // chạy chung một database (vd. Neon) theo thứ tự nào cũng được.
   await login(page, "creator@datasetmarketplace.local");
-  await expect(page.getByRole("link", { name: "+ Tạo chiến dịch mới" })).toBeVisible();
+  await connectWallet(page, page.getByRole("link", { name: "+ Tạo chiến dịch mới" }));
   // Header hiện Gmail đang đăng nhập (ví đi theo Gmail)
   await expect(page.getByRole("button", { name: "Tài khoản creator@datasetmarketplace.local" })).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/creator-dashboard.png`, fullPage: true });
@@ -212,7 +223,7 @@ test("Gmail gắn ví khác ví MetaMask đang chọn: đăng nhập vẫn đư�
   // Gmail của người đóng góp đã gắn ví trình duyệt (ở "máy" khác) — MetaMask ở đây là ví labx
   await login(page, contributorEmail);
   const notice = page.getByRole("alert").filter({ hasText: "MetaMask đang chọn ví khác" });
-  await expect(notice).toBeVisible();
+  await connectWallet(page, notice);
   await expect(notice.getByText("nạp ví đó vào MetaMask", { exact: false })).toBeVisible();
   await expect(notice.getByRole("button", { name: "Chọn tài khoản trong MetaMask" })).toBeVisible();
   await expect(page.getByRole("link", { name: "+ Tạo chiến dịch mới" })).toHaveCount(0);
@@ -263,6 +274,7 @@ test("người mua: kết nối ví, nhận mUSDC thử, ký cho phép + mua (n�
   // Cùng email với CLI (`datasetmarketplace login --as labx`) để chạy được theo thứ tự nào cũng được
   await login(page, "labx@datasetmarketplace.local", page.getByLabel("Mua bộ dữ liệu"));
   const buy = page.getByRole("button", { name: /^Mua license/ });
+  await connectWallet(page, buy);
   if (await page.getByRole("button", { name: "Nhận mUSDC thử nghiệm" }).isVisible()) {
     await page.getByRole("button", { name: "Nhận mUSDC thử nghiệm" }).click();
   }
@@ -284,7 +296,8 @@ test("người mua: kết nối ví, nhận mUSDC thử, ký cho phép + mua (n�
 test("người tạo: rút phần doanh thu chỉ bằng chữ ký (phí xử lý trừ vào số rút)", async ({ browser, request }) => {
   const { page, ctx, errors } = await role(browser, ANVIL.creator);
   await page.goto("/create");
-  await login(page, "creator@datasetmarketplace.local"); // đã gắn ví ⇒ vào thẳng, web tự kết nối đúng ví
+  await login(page, "creator@datasetmarketplace.local"); // đã gắn ví ⇒ vào thẳng; tự bấm kết nối MetaMask ở bảng điều khiển
+  await connectWallet(page, page.getByRole("link", { name: "+ Tạo chiến dịch mới" }));
   // Menu tài khoản gọn: số dư, Cài đặt, Đăng xuất; Cài đặt đổi tên hiển thị + ảnh đại diện (lưu ở máy chủ)
   await page.getByRole("button", { name: "Tài khoản creator@datasetmarketplace.local" }).click();
   const menu = page.getByRole("menu");
@@ -327,6 +340,7 @@ test("chủ chiến dịch: xem bản tóm tắt rồi ký công bố phiên b�
   const { page, ctx, errors } = await role(browser, ANVIL.creator);
   await page.goto("/create");
   await login(page, "creator@datasetmarketplace.local");
+  await connectWallet(page, page.getByRole("link", { name: "+ Tạo chiến dịch mới" }));
   // Thẻ của đúng chiến dịch vừa tạo (bảng điều khiển có thể chứa chiến dịch của các lần chạy trước)
   const card = page
     .getByRole("main")
@@ -354,6 +368,7 @@ test("người mua: tải phiên bản dataset từ thư viện", async ({ brows
   const { page, ctx } = await role(browser, ANVIL.labx);
   await page.goto("/library");
   await login(page, "labx@datasetmarketplace.local");
+  await connectWallet(page, page.getByRole("button", { name: "Tải phiên bản mới nhất" }));
   // Thẻ của đúng chiến dịch vừa tạo (thư viện có thể chứa license của các lần chạy trước)
   const card = page
     .getByRole("main")

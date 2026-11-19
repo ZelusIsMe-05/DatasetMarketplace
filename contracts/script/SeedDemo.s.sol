@@ -33,9 +33,12 @@ contract SeedDemo is Script {
         // 1) Tiền trong app cho người mua demo: tự mint, không xin ai
         usdc.mint(demoBuyer, 2_000e6);
 
-        // 2) Gas cho người mua demo: chuyển từ ví đội (AVAX đã xin từ faucet nếu ở Fuji)
-        (bool ok,) = demoBuyer.call{value: gasGift}("");
-        require(ok, "gas transfer failed");
+        // 2) Gas cho người mua demo: chuyển từ ví đội (AVAX đã xin từ faucet nếu ở Fuji).
+        //    0 = bỏ qua (Fuji: người mua chỉ ký, nền tảng trả phí mạng) — gửi 0 AVAX vô nghĩa và forge sẽ dừng hỏi xác nhận.
+        if (gasGift > 0) {
+            (bool ok,) = demoBuyer.call{value: gasGift}("");
+            require(ok, "gas transfer failed");
+        }
 
         // 3) Chiến dịch mẫu: 10 giờ, giá đầy đủ 1.000 USDC, chia 80/10/10, hạn 30 ngày
         uint256 id = vc.createCampaign(

@@ -1,0 +1,14 @@
+#cloud-config
+# First boot of the Azure VM for the Dataset Marketplace backend: install Docker (+ compose plugin) and a 2 GB swap file
+# (the VM has 4 GB RAM; building torch + running the QC model needs headroom).
+# ASCII only: az vm create --custom-data reads this file as latin-1 (Vietnamese text breaks it).
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+runcmd:
+  - fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  - echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  - curl -fsSL https://get.docker.com | sh
+  - usermod -aG docker azureuser
+  - systemctl enable --now docker

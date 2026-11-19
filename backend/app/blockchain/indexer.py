@@ -1,12 +1,14 @@
 """Lập chỉ mục sự kiện on-chain vào database (đề xuất §8.1 "API đọc license, sự kiện").
 
-- Đọc log theo từng đoạn block (RPC công khai của Fuji giới hạn phạm vi eth_getLogs).
+- Đọc log theo từng đoạn block (RPC công khai của Fuji giới hạn phạm vi eth_getLogs: tối đa 100 block/lần, kiểm
+  11/2026). RPC báo "block range too large … maximum of N blocks" ⇒ tự giảm đoạn xuống N rồi đọc lại, không dừng backend.
 - Idempotent: ràng buộc unique + kiểm tra tồn tại, chạy lại an toàn.
 - Hook `on_revoked`: mọi thu hồi (qua relayer HAY người dùng tự gọi `revoke`) đều kích hoạt xóa audio + salt.
 """
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from collections.abc import Callable
@@ -15,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 from web3 import Web3
 from web3._utils.events import get_event_data
+from web3.exceptions import Web3RPCError
 
 from app.blockchain.client import ChainClient
 from app.models import Campaign, Claim, Consent, KvState, OnchainContribution, Purchase
@@ -26,6 +29,15 @@ STATE_KEY = "indexer.last_block"
 
 def _hex(b: bytes) -> str:
     return "0x" + bytes(b).hex()
+
+
+_RANGE_LIMIT = re.compile(r"block range.*?(?:maximum|max|limit)\D{0,20}(\d+)", re.IGNORECASE | re.DOTALL)
+
+
+def _range_limit(err: Exception) -> int | None:
+    """Số block tối đa mà RPC cho phép trong một eth_getLogs, đọc từ thông báo lỗi; None nếu không phải lỗi phạm vi."""
+    m = _RANGE_LIMIT.search(str(err))
+    return int(m.group(1)) if m and int(m.group(1)) > 0 else None
 
 
 class EventIndexer:
@@ -59,29 +71,66 @@ class EventIndexer:
             return 0
         return self.sync()
 
-    def sync(self) -> int:
-        """Xử lý mọi log mới. Trả về số sự kiện đã xử lý."""
+    def _process(self, s: Session, logs, revoked: list[int]) -> int:  # noqa: ANN001
+        n = 0
+        for raw in logs:
+            if Web3.to_checksum_address(raw["address"]) != self.chain.address:
+                continue  # receipt còn log Transfer/Approval của token
+            abi = self._events.get(_hex(raw["topics"][0]))
+            if abi is None:
+                continue
+            rid = self._handle(s, get_event_data(self.chain.w3.codec, abi, raw))
+            if rid is not None:
+                revoked.append(rid)
+            n += 1
+        return n
+
+    def sync(self, receipt=None) -> int:  # noqa: ANN001
+        """Xử lý mọi log mới. Trả về số sự kiện đã xử lý.
+
+        `receipt`: giao dịch relayer vừa gửi đã xác nhận — xử lý ngay log của chính nó trước. RPC công khai (Fuji) cân bằng
+        tải giữa nhiều node: ngay sau receipt, `eth_blockNumber` có thể trả block trước đó ⇒ không có `receipt` thì sự kiện
+        vừa xảy ra chỉ được ghi ở vòng nền kế tiếp (vd. trang dataset vừa tạo hiện "chưa xác minh metadata"). Handler
+        idempotent nên vòng quét sau gặp lại log này cũng không sao; con trỏ quét không đổi.
+        """
         with self._lock:
             processed = 0
             revoked: list[int] = []
+            if receipt is not None:
+                # Giao dịch ĐÃ thành công ⇒ lỗi đọc ở đây (node RPC chưa có block này) không được làm hỏng request:
+                # thử lại ngắn, rồi để vòng quét thường / vòng nền xử lý.
+                for attempt in range(3):
+                    got: list[int] = []
+                    try:
+                        with self.sf() as s:
+                            n = self._process(s, receipt["logs"], got)
+                            s.commit()
+                        processed += n
+                        revoked += got
+                        break
+                    except Exception as e:  # noqa: BLE001
+                        if attempt == 2:
+                            log.warning("Chưa xử lý được log của tx %s ngay (%s) — để vòng quét sau", _hex(receipt["transactionHash"]), e)
+                        else:
+                            time.sleep(1)
             head = self.chain.block_number()
             with self.sf() as s:
                 frm = self.last_block(s) + 1
             while frm <= head:
                 to = min(head, frm + self.chunk - 1)
-                logs = self.chain.w3.eth.get_logs(
-                    {"address": self.chain.address, "fromBlock": frm, "toBlock": to}
-                )
+                try:
+                    logs = self.chain.w3.eth.get_logs(
+                        {"address": self.chain.address, "fromBlock": frm, "toBlock": to}
+                    )
+                except Web3RPCError as e:
+                    limit = _range_limit(e)
+                    if limit is None or limit >= self.chunk:
+                        raise
+                    log.warning("RPC chỉ cho đọc log tối đa %s block/lần (đang dùng %s) — tự giảm LOG_CHUNK_BLOCKS", limit, self.chunk)
+                    self.chunk = limit
+                    continue
                 with self.sf() as s:
-                    for raw in logs:
-                        abi = self._events.get(_hex(raw["topics"][0]))
-                        if abi is None:
-                            continue
-                        ev = get_event_data(self.chain.w3.codec, abi, raw)
-                        rid = self._handle(s, ev)
-                        if rid is not None:
-                            revoked.append(rid)
-                        processed += 1
+                    processed += self._process(s, logs, revoked)
                     row = s.get(KvState, STATE_KEY)
                     if row is None:
                         s.add(KvState(key=STATE_KEY, value=str(to)))
@@ -107,7 +156,9 @@ class EventIndexer:
         if name == "CampaignCreated":
             cid = int(a["campaignId"])
             if s.get(Campaign, cid) is None:
-                view = self.chain.campaign(cid)
+                # Đọc tại đúng block của sự kiện: node RPC trễ hơn block này sẽ báo lỗi (vòng sau thử lại) thay vì trả
+                # "chưa có chiến dịch" khiến sự kiện bị bỏ qua vĩnh viễn khi con trỏ quét đã đi qua.
+                view = self.chain.campaign(cid, block=block)
                 if view is None:
                     return None
                 s.add(

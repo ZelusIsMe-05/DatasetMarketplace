@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from eth_account import Account
 from web3 import Web3
 from web3.exceptions import ContractCustomError, ContractLogicError
+from web3.middleware import ExtraDataToPOAMiddleware
 
 from app.blockchain.abi import load_abi
 from app.blockchain.errors import decode_revert, message_for
@@ -27,6 +28,7 @@ class TxOut:
 class Chain:
     def __init__(self, rpc_url: str, voice_campaigns: str, token: str):
         self.w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={"timeout": 60}))
+        self.w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)  # block Avalanche có extraData > 32 byte
         self.vc = self.w3.eth.contract(address=Web3.to_checksum_address(voice_campaigns), abi=load_abi("VoiceCampaigns"))
         self.token = self.w3.eth.contract(address=Web3.to_checksum_address(token), abi=load_abi("MockUSDC"))
 

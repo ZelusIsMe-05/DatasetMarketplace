@@ -120,7 +120,7 @@ class RewardsService:
             meta={"campaign_id": campaign_id, "contributor": addr},
         )
         ev = self.chain.contract.events.Claimed().process_receipt(res.receipt, errors=DISCARD)[0]["args"]
-        self.indexer.sync()
+        self.indexer.sync(res.receipt)
         rate = self.fx.rate()
         return ClaimResponse(
             campaign_id=campaign_id,
