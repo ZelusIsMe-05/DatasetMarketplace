@@ -199,6 +199,11 @@ Subscription Azure for Students chỉ cho 5 vùng (`koreacentral`, `japanwest`, 
 `~/dm/backend.env` (chmod 600) trên máy ảo. **Không chạy song song** backend Fuji ở máy khác (chung ví relayer + database).
 Hết tín dụng thì Azure dừng máy ảo (không trừ tiền vì không gắn thẻ).
 
+**Database (Neon, project `DatasetMarketplace`):** nhánh **`production`** (mặc định) = dữ liệu Fuji, schema `fuji_v1`
+(`backend\.env.fuji`); nhánh **`dev`** = chạy local, schema `public` (`backend\.env.local`). Hai nhánh có mật khẩu role
+`neondb_owner` khác nhau — lấy chuỗi kết nối bằng nút **Connect** đúng nhánh. Trong Neon Console, trang *Tables* mặc định hiện
+schema `public`: đổi ô *Schema* sang `fuji_v1` để thấy bảng của Fuji. Đổi `DATABASE_URL` của Fuji ⇒ `scripts\deploy-azure.bat --deploy`.
+
 ### Kết quả: `backend\.env.fuji`
 
 ```dotenv
