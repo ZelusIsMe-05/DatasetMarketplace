@@ -6,6 +6,7 @@ import logging
 import re
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from eth_utils import keccak
@@ -298,13 +299,13 @@ class CampaignService:
     def list(self) -> list[CampaignSummary]:
         self.indexer.sync_if_stale()
         rate, now = self.fx.rate(), self.chain.block_timestamp()
-        out: list[CampaignSummary] = []
+        count = self.chain.campaign_count()
+        # Mỗi chiến dịch cần ~5 lần đọc RPC; đọc tuần tự trên Fuji (~0,3 giây/lần) làm trang khám phá chờ >10 giây.
+        # Đọc chain song song; phần database vẫn chạy tuần tự ở đây (Session không dùng chung giữa các luồng).
+        with ThreadPoolExecutor(max_workers=min(8, max(1, count))) as pool:
+            views = list(pool.map(self.chain.campaign, range(count)))
         with self.sf() as s:
-            for cid in range(self.chain.campaign_count()):
-                view = self.chain.campaign(cid)
-                if view is not None:
-                    out.append(self.summary(s, view, now, rate))
-        return out
+            return [self.summary(s, v, now, rate) for v in views if v is not None]
 
     def detail(self, campaign_id: int) -> CampaignDetail:
         self.indexer.sync_if_stale()

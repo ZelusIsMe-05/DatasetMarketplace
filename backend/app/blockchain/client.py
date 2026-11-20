@@ -1,8 +1,12 @@
 """Đọc contract VoiceCampaigns + token qua web3.py (Anvil / Fuji / mainnet)."""
 from __future__ import annotations
 
+import socket
 from dataclasses import dataclass
 
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.connection import HTTPConnection
 from web3 import Web3
 from web3.contract import Contract
 from web3.exceptions import ContractCustomError, ContractLogicError
@@ -65,9 +69,36 @@ def _hex(b: bytes) -> str:
     return "0x" + bytes(b).hex()
 
 
+class _KeepAliveAdapter(HTTPAdapter):
+    """Bật TCP keepalive cho kết nối RPC dùng lại (keep-alive).
+
+    NAT của Azure (và nhiều cloud khác) âm thầm bỏ kết nối TCP rảnh ~4 phút, không gửi RST: request kế tiếp đi vào
+    kết nối "chết" và treo tới hết timeout đọc (30 giây) rồi web3 mới thử lại — gặp thật trên Fuji 20/11 (khung mua
+    hiện khung chờ ~30 giây sau một lúc không ai truy cập). Gói keepalive mỗi 60 giây giữ kết nối sống qua NAT.
+    """
+
+    OPTIONS = [*HTTPConnection.default_socket_options, (socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)] + [
+        (socket.IPPROTO_TCP, getattr(socket, name), value)
+        for name, value in (("TCP_KEEPIDLE", 60), ("TCP_KEEPINTVL", 20), ("TCP_KEEPCNT", 3))
+        if hasattr(socket, name)
+    ]
+
+    def init_poolmanager(self, *args, **kwargs):  # noqa: ANN002, ANN003, ANN201
+        kwargs["socket_options"] = self.OPTIONS
+        return super().init_poolmanager(*args, **kwargs)
+
+
+def _rpc_session() -> requests.Session:
+    s = requests.Session()
+    adapter = _KeepAliveAdapter(pool_maxsize=32)  # endpoint đồng bộ chạy threadpool: nhiều request đọc chain song song
+    s.mount("https://", adapter)
+    s.mount("http://", adapter)
+    return s
+
+
 class ChainClient:
     def __init__(self, rpc_url: str, voice_campaigns: str, token: str, timeout: int = 30):
-        self.w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={"timeout": timeout}))
+        self.w3 = Web3(Web3.HTTPProvider(rpc_url, request_kwargs={"timeout": timeout}, session=_rpc_session()))
         # Block của Avalanche C-Chain có extraData dài hơn 32 byte: thiếu middleware này web3 ném ExtraDataLengthError
         # khi đọc block (vd. lúc relayer lấy baseFee để gửi giao dịch) — gặp thật trên Fuji 19/11. Vô hại với Anvil.
         self.w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)

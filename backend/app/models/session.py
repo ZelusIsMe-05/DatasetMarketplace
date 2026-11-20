@@ -33,7 +33,10 @@ def make_engine(url: str, schema: str | None = None) -> Engine:
 
         return engine
 
-    connect_args: dict = {"connect_timeout": 15}
+    # TCP keepalive: NAT của cloud (Azure ~4 phút) âm thầm bỏ kết nối rảnh ⇒ kết nối trong pool "chết" làm request treo.
+    connect_args: dict = {
+        "connect_timeout": 15, "keepalives": 1, "keepalives_idle": 60, "keepalives_interval": 20, "keepalives_count": 3,
+    }
     if schema:
         # Kết nối trực tiếp (không qua pooler) nên tham số khởi động search_path hoạt động
         connect_args["options"] = f"-csearch_path={schema}"
@@ -41,7 +44,7 @@ def make_engine(url: str, schema: str | None = None) -> Engine:
         url,
         connect_args=connect_args,
         pool_pre_ping=True,  # Neon tự tắt compute khi rảnh: kiểm tra kết nối trước khi dùng
-        pool_recycle=300,
+        pool_recycle=200,  # dưới mốc ~4 phút bỏ kết nối rảnh của NAT Azure
         pool_size=5,
         max_overflow=5,
         future=True,
