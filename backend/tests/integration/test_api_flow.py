@@ -431,3 +431,24 @@ def test_rate_limit_returns_consistent_429(app_client):
         ratelimit.limiter.enabled = False
         ratelimit.LIMITS["faucet"] = "200/hour"
         ratelimit.limiter.reset()
+
+
+def test_creator_hides_campaign_from_discovery(app_client, chain):
+    """Chủ chiến dịch ẩn chiến dịch (vd. chiến dịch kiểm thử) khỏi trang khám phá — cờ off-chain, §3 #35."""
+    c = app_client
+    cid = create_campaign(c, chain)
+
+    def listed() -> dict:
+        return next(x for x in ok(c.get("/campaigns")) if x["id"] == cid)
+
+    assert listed()["hidden"] is False
+    url = f"/creator/campaigns/{cid}/visibility"
+    assert c.post(url, json={"hidden": True}).status_code == 401
+    assert c.post(url, json={"hidden": True}, headers=login(c, "an")).status_code == 403  # không phải người tạo
+    assert c.post("/creator/campaigns/9999/visibility", json={"hidden": True}, headers=login(c, "creator")).status_code == 404
+    r = ok(c.post(url, json={"hidden": True}, headers=login(c, "creator")))
+    assert r["id"] == cid and r["hidden"] is True
+    assert listed()["hidden"] is True  # vẫn trong danh sách (Thu nhập / Thư viện cần), giao diện lọc ở trang khám phá
+    assert ok(c.get(f"/campaigns/{cid}"))["hidden"] is True  # link trực tiếp vẫn mở
+    ok(c.post(url, json={"hidden": False}, headers=login(c, "creator")))
+    assert listed()["hidden"] is False

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.blockchain.client import CampaignView, ChainClient
 from app.blockchain.indexer import EventIndexer
 from app.core.config import Settings
-from app.core.errors import BadRequest, NotFound
+from app.core.errors import BadRequest, Forbidden, NotFound
 from app.models import Campaign, CampaignDraft, Prompt, User
 from app.qc.service import QcService
 from app.qc.text import canonical_prompt_set, has_digits, normalize_text, parse_prompt_set
@@ -261,7 +261,9 @@ class CampaignService:
 
     def summary(self, s: Session, view: CampaignView, now: int, rate: float) -> CampaignSummary:
         draft = CampaignRepo.draft_for(s, view.id)
+        row = s.get(Campaign, view.id)
         return CampaignSummary(
+            hidden=bool(row and row.hidden),
             id=view.id,
             name=draft.name if draft else None,
             accent=draft.accent if draft else None,
@@ -276,6 +278,22 @@ class CampaignService:
             status=campaign_status(view, now),
             deadline=view.deadline,
         )
+
+    def set_hidden(self, user: User, campaign_id: int, hidden: bool) -> CampaignSummary:
+        """Chủ chiến dịch ẩn / hiện chiến dịch của mình trên các trang khám phá (cờ off-chain, §3 #35)."""
+        self.indexer.sync_if_stale(0)
+        view = self._view(campaign_id)
+        if view.creator.lower() != user.wallet_address.lower():
+            raise Forbidden("Chỉ người tạo chiến dịch được ẩn / hiện chiến dịch này")
+        rate, now = self.fx.rate(), self.chain.block_timestamp()
+        with self.sf() as s:
+            row = s.get(Campaign, campaign_id)
+            if row is None:
+                raise NotFound("Chiến dịch chưa được đồng bộ, thử lại sau ít giây")
+            row.hidden = hidden
+            s.commit()
+            log.info("Chiến dịch #%s %s bởi người tạo", campaign_id, "ẩn" if hidden else "hiện lại")
+            return self.summary(s, view, now, rate)
 
     def list(self) -> list[CampaignSummary]:
         self.indexer.sync_if_stale()

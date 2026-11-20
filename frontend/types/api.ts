@@ -49,6 +49,8 @@ export interface Session {
 
 export interface CampaignSummary {
   id: number;
+  /** Người tạo đã ẩn khỏi trang chủ / Khám phá / danh sách đóng góp; link trực tiếp vẫn mở được */
+  hidden: boolean;
   name: string | null;
   accent: string | null;
   metadata_verified: boolean;

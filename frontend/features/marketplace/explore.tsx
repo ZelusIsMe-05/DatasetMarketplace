@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useDeferredValue, useMemo, useState } from "react";
 import type { CampaignSummary } from "@/types/api";
 import { daysLeft, formatDuration } from "@/lib/format";
-import { useCampaigns } from "@/hooks/queries";
+import { usePublicCampaigns } from "@/hooks/queries";
 import { CampaignStatusBadge, Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
@@ -21,7 +21,7 @@ type StatusFilter = "all" | "collecting" | "done";
 type Sort = "progress" | "newest" | "price-asc" | "price-desc";
 
 export function Explore() {
-  const { data, error, isLoading, refetch } = useCampaigns();
+  const { data, error, isLoading, refetch } = usePublicCampaigns();
   const [query, setQuery] = useState("");
   const deferred = useDeferredValue(query);
   const [status, setStatus] = useState<StatusFilter>("all");

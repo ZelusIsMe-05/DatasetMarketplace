@@ -68,8 +68,13 @@ class SnapshotRef(BaseModel):
     tx_hash: str | None
 
 
+class CampaignVisibilityRequest(BaseModel):
+    hidden: bool = Field(description="true = ẩn khỏi trang chủ / Khám phá / danh sách đóng góp (link trực tiếp vẫn mở được)")
+
+
 class CampaignSummary(BaseModel):
     id: int
+    hidden: bool = Field(default=False, description="Chủ chiến dịch đã ẩn khỏi các trang khám phá (implementation-plan §3 #35)")
     name: str | None
     accent: str | None
     metadata_verified: bool

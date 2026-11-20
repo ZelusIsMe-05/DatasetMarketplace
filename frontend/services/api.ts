@@ -136,6 +136,9 @@ export function createApi(token: string) {
     reviewAudio: (id: number) => r<Blob>(`/creator/review/${id}/audio`),
     decideReview: (id: number, decision: "approve" | "reject", note?: string) =>
       r<ContributionResult>(`/creator/review/${id}`, { method: "POST", body: json({ decision, note }) }),
+    /** Ẩn / hiện chiến dịch của mình trên trang chủ, Khám phá, danh sách đóng góp (implementation-plan §3 #35). */
+    setCampaignHidden: (campaignId: number, hidden: boolean) =>
+      r<CampaignSummary>(`/creator/campaigns/${campaignId}/visibility`, { method: "POST", body: json({ hidden }) }),
     snapshotQuote: (campaignId: number) => r<SnapshotQuote>(`/campaigns/${campaignId}/snapshot-quote`),
     publishSnapshot: (campaignId: number, merkleRoot: string, deadline: number, signature: string) =>
       r<SnapshotResult>(`/campaigns/${campaignId}/snapshots`, {

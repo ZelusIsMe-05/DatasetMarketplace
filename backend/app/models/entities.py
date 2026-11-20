@@ -18,6 +18,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy import false as sa_false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, utcnow
@@ -86,6 +87,8 @@ class Campaign(Base, TimestampMixin):
     creator: Mapped[str] = mapped_column(String(42), index=True)
     draft_id: Mapped[str | None] = mapped_column(ForeignKey("campaign_drafts.id"), nullable=True)
     metadata_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Chủ chiến dịch ẩn khỏi trang chủ / Khám phá / danh sách đóng góp (off-chain, §3 #35); link trực tiếp vẫn mở được
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default=sa_false())
     target_sec: Mapped[int] = mapped_column(BigInteger)
     full_price_units: Mapped[str] = mapped_column(String(80))
     contributor_bps: Mapped[int] = mapped_column(Integer)

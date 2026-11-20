@@ -1,6 +1,6 @@
 "use client";
 
-import { useCampaigns } from "@/hooks/queries";
+import { usePublicCampaigns } from "@/hooks/queries";
 import { formatDuration, formatNumber } from "@/lib/format";
 import { ButtonLink } from "@/components/ui/button";
 import { AnimatedNumber, Reveal, SectionHeading } from "@/components/ui/misc";
@@ -9,7 +9,7 @@ import { DatasetCard } from "@/features/marketplace/dataset-card";
 
 /** Số liệu thật từ API (không dùng con số trang trí). */
 export function LiveStats() {
-  const { data } = useCampaigns();
+  const { data } = usePublicCampaigns();
   const collecting = data?.filter((c) => c.is_collecting).length ?? 0;
   const totalSec = data?.reduce((n, c) => n + c.total_sec, 0) ?? 0;
   const stats = [
@@ -34,7 +34,7 @@ export function LiveStats() {
 }
 
 export function FeaturedCampaigns() {
-  const { data, isLoading, error, refetch } = useCampaigns();
+  const { data, isLoading, error, refetch } = usePublicCampaigns();
   const top = [...(data ?? [])].sort((a, b) => Number(b.is_collecting) - Number(a.is_collecting) || b.progress_bps - a.progress_bps).slice(0, 3);
   return (
     <section className="container-page py-20 sm:py-24" aria-labelledby="featured">

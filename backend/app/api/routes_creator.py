@@ -12,12 +12,19 @@ from fastapi.responses import Response
 from app.api.deps import ContainerDep, CurrentUser
 from app.core import ratelimit
 from app.core.ratelimit import limiter
+from app.schemas.campaign import CampaignSummary, CampaignVisibilityRequest
 from app.schemas.contribution import ContributionResult
 from app.schemas.dataset import SnapshotResponse
 from app.schemas.review import ReviewDecision, ReviewItem, SnapshotPublishRequest, SnapshotQuote
 
 router = APIRouter(tags=["creator"])
 CampaignId = Annotated[int, Path(ge=0, description="campaignId on-chain")]
+
+
+@router.post("/creator/campaigns/{campaign_id}/visibility")
+def set_visibility(c: ContainerDep, user: CurrentUser, campaign_id: CampaignId, body: CampaignVisibilityRequest) -> CampaignSummary:
+    """Ẩn / hiện chiến dịch trên trang chủ, Khám phá và danh sách đóng góp (chỉ người tạo; cờ off-chain, link trực tiếp vẫn mở)."""
+    return c.campaigns.set_hidden(user, campaign_id, body.hidden)
 
 
 @router.get("/creator/review")

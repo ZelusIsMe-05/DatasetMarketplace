@@ -2,17 +2,19 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useState } from "react";
 import type { Address } from "viem";
 import { formatDuration } from "@/lib/format";
 import { moneyFromUnits } from "@/lib/money";
-import { useCampaign, useCampaigns, useFees, useFx, useRevenue } from "@/hooks/queries";
+import { qk, useCampaign, useCampaigns, useFees, useFx, useRevenue } from "@/hooks/queries";
+import { describeChainError } from "@/lib/chainErrors";
 import { useWithdrawable } from "@/hooks/useChain";
 import { useWalletSession } from "@/hooks/useSessions";
 import { useSponsoredFlow } from "@/hooks/useSponsored";
 import { publicApi } from "@/services/api";
 import { useToast } from "@/providers/toast-provider";
 import type { CampaignSummary } from "@/types/api";
-import { CampaignStatusBadge } from "@/components/ui/badge";
+import { Badge, CampaignStatusBadge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { MoneyText } from "@/components/money";
@@ -90,10 +92,31 @@ function CreatorCampaignRow({ c }: { c: CampaignSummary }) {
   const seedLeft = detail.data?.seed_balance.units ?? 0;
   // Hợp đồng dùng thời gian block; mô phỏng giao dịch sẽ báo "Chưa đến hạn" nếu chưa qua deadline.
   const canWithdrawSeed = seedLeft > 0 && !c.is_collecting;
+  const w = useWalletSession();
+  const [hiding, setHiding] = useState(false);
+  // Ẩn khỏi trang chủ / Khám phá / danh sách đóng góp (vd. chiến dịch thử) — chỉ đổi hiển thị, không đổi gì trên chain (§3 #35)
+  const toggleHidden = async () => {
+    if (!w.api) return;
+    const next = !c.hidden;
+    setHiding(true);
+    try {
+      await w.api.setCampaignHidden(c.id, next);
+      await qc.invalidateQueries({ queryKey: qk.campaigns });
+      toast.success(next ? "Đã ẩn khỏi trang chính" : "Đã hiện lại trên trang chính", next ? "Người có đường dẫn vẫn mở được chiến dịch." : undefined);
+    } catch (e) {
+      toast.error("Chưa đổi được chế độ hiển thị", describeChainError(e));
+    } finally {
+      setHiding(false);
+    }
+  };
   return (
     <Card className="grid gap-5 lg:grid-cols-[1.4fr_1fr_auto] lg:items-center">
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2"><CampaignStatusBadge status={c.status} /><span className="text-caption">#{c.id}</span></div>
+        <div className="flex flex-wrap items-center gap-2">
+          <CampaignStatusBadge status={c.status} />
+          {c.hidden && <Badge>Đã ẩn khỏi trang chính</Badge>}
+          <span className="text-caption">#{c.id}</span>
+        </div>
         <Link href={`/datasets/${c.id}`} className="mt-2 block text-lg font-semibold hover:text-primary-active">{campaignName(c)}</Link>
         <Progress value={c.progress_bps / 10_000} label="Tiến độ" size="sm" className="mt-3" />
         <p className="mt-2 text-caption">{formatDuration(c.total_sec)} / {formatDuration(c.target_sec)} · giá hiện tại {c.price.display}</p>
@@ -106,6 +129,9 @@ function CreatorCampaignRow({ c }: { c: CampaignSummary }) {
       </dl>
       <div className="flex flex-col gap-2">
         <ButtonLink href={`/datasets/${c.id}`} variant="outline" size="sm">Xem trang dataset</ButtonLink>
+        <Button size="sm" variant="ghost" loading={hiding} onClick={() => void toggleHidden()}>
+          {c.hidden ? "Hiện lại trên trang chính" : "Ẩn khỏi trang chính"}
+        </Button>
         {canWithdrawSeed && (
           <Button size="sm" variant="secondary" loading={flow.running} onClick={async () => {
             try {

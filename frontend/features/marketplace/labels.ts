@@ -4,6 +4,7 @@ const ACCENTS: Record<string, string> = {
   "mien-nam": "Giọng miền Nam",
   "mien-tay": "Giọng miền Tây",
   "tay-nguyen": "Giọng Tây Nguyên",
+  "nghe-tinh": "Giọng Nghệ Tĩnh",
 };
 
 export const accentLabel = (a: string | null | undefined) => (a ? (ACCENTS[a] ?? a) : "Chưa rõ vùng giọng");

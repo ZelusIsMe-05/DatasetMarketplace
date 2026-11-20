@@ -3,6 +3,7 @@
 // React Query trên các endpoint thật của backend. Khóa query thống nhất để invalidate sau giao dịch.
 import { useQuery } from "@tanstack/react-query";
 import { publicApi } from "@/services/api";
+import type { CampaignSummary } from "@/types/api";
 
 export const qk = {
   health: ["health"] as const,
@@ -23,6 +24,11 @@ export const useFx = () => useQuery({ queryKey: qk.fx, queryFn: publicApi.fx, st
 /** Bảng phí xử lý (đã gồm phí mạng nền tảng trả hộ) để hiện trên hóa đơn trước khi ký. */
 export const useFees = () => useQuery({ queryKey: qk.fees, queryFn: publicApi.fees, staleTime: 60_000 });
 export const useCampaigns = () => useQuery({ queryKey: qk.campaigns, queryFn: publicApi.campaigns, refetchInterval: 15_000 });
+const visibleOnly = (xs: CampaignSummary[]) => xs.filter((c) => !c.hidden);
+/** Trang chủ, Khám phá, danh sách để đóng góp: bỏ chiến dịch người tạo đã ẩn (implementation-plan §3 #35). Bảng điều khiển
+ *  người tạo, Thu nhập, Thư viện dùng `useCampaigns` (vẫn cần chiến dịch đã ẩn). Cùng cache, chỉ lọc khi đọc. */
+export const usePublicCampaigns = () =>
+  useQuery({ queryKey: qk.campaigns, queryFn: publicApi.campaigns, refetchInterval: 15_000, select: visibleOnly });
 export const useCampaign = (id: number) => useQuery({ queryKey: qk.campaign(id), queryFn: () => publicApi.campaign(id), refetchInterval: 15_000 });
 export const usePrice = (id: number) => useQuery({ queryKey: qk.price(id), queryFn: () => publicApi.price(id), refetchInterval: 10_000 });
 export const useTerms = (id: number, enabled = true) => useQuery({ queryKey: qk.terms(id), queryFn: () => publicApi.terms(id), enabled });

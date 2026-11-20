@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { formatDuration, formatNumber } from "@/lib/format";
-import { useCampaigns } from "@/hooks/queries";
+import { usePublicCampaigns } from "@/hooks/queries";
 import { useContributor } from "@/hooks/useSessions";
 import { ContributionStatusBadge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
@@ -16,14 +16,14 @@ import { WalletBackupCard } from "@/features/earn/wallet-backup";
 export function EarnDashboard() {
   const c = useContributor();
   const mine = useMyContributions();
-  const campaigns = useCampaigns();
+  const publicCampaigns = usePublicCampaigns();
   if (mine.error) return <ErrorState className="mt-8" description={mine.error.message} onRetry={() => mine.refetch()} />;
 
   const items = mine.data?.contributions ?? [];
   const registered = items.filter((x) => x.status === "registered");
   const validSec = registered.reduce((n, x) => n + x.weight_sec, 0);
   const joined = new Set(items.map((x) => x.campaign_id)).size;
-  const open = (campaigns.data ?? []).filter((x) => x.is_collecting).slice(0, 2);
+  const open = (publicCampaigns.data ?? []).filter((x) => x.is_collecting).slice(0, 2);
   const name = c.session?.email.split("@")[0];
 
   return (
@@ -101,7 +101,7 @@ export function EarnDashboard() {
 }
 
 export function EarnCampaigns() {
-  const { data, error, isLoading, refetch } = useCampaigns();
+  const { data, error, isLoading, refetch } = usePublicCampaigns();
   const open = (data ?? []).filter((x) => x.is_collecting);
   return (
     <div className="py-8">
